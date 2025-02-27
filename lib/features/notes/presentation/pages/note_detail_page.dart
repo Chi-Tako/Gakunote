@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../../core/models/note.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 class NoteDetailPage extends StatefulWidget {
   final String noteId;
@@ -101,7 +102,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () {
-              _showOptions(context);
+              // _showOptions(context);
             },
           ),
         ],
@@ -130,88 +131,202 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   Widget _buildBlockWidget(NoteBlock block, int index) {
     if (_isEditing) {
       // 編集モード
-      return Card(
-        margin: const EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ブロックタイプ選択
-              DropdownButton<BlockType>(
-                value: block.type,
-                onChanged: (BlockType? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      block.type = newValue;
-                    });
-                  }
-                },
-                items: BlockType.values
-                    .where((type) => type != BlockType.sketch) // 手書きは別途実装
-                    .map<DropdownMenuItem<BlockType>>((BlockType value) {
-                  return DropdownMenuItem<BlockType>(
-                    value: value,
-                    child: Text(_getBlockTypeName(value)),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 8),
-              // ブロック内容の編集フィールド
-              TextField(
-                controller: _blockControllers[index],
-                maxLines: null,
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  hintText: _getBlockHint(block.type),
+      if (block.type == BlockType.math) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ブロックタイプ選択
+                Row(
+                  children: [
+                    DropdownButton<BlockType>(
+                      value: block.type,
+                      onChanged: (BlockType? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            block.type = newValue;
+                          });
+                        }
+                      },
+                      items: BlockType.values
+                          .where((type) => type != BlockType.sketch) // 手書きは別途実装
+                          .map<DropdownMenuItem<BlockType>>((BlockType value) {
+                        return DropdownMenuItem<BlockType>(
+                          value: value,
+                          child: Text(_getBlockTypeName(value)),
+                        );
+                      }).toList(),
+                    ),
+                    const Spacer(),
+                    // 数式プレビューボタン
+                    IconButton(
+                      icon: const Icon(Icons.preview),
+                      tooltip: '数式プレビュー',
+                      onPressed: () {
+                        // プレビューダイアログを表示
+                        _showMathPreview(context, _blockControllers[index].text);
+                      },
+                    ),
+                  ],
                 ),
-                onChanged: (value) {
-                  block.content = value;
-                },
-              ),
-              // ブロック操作ボタン
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_upward),
-                    onPressed: index > 0
-                        ? () {
-                            setState(() {
-                              _note.reorderBlocks(index, index - 1);
-                              final controller = _blockControllers.removeAt(index);
-                              _blockControllers.insert(index - 1, controller);
-                            });
-                          }
-                        : null,
+                const SizedBox(height: 8),
+                // 数式の入力フィールド
+                TextField(
+                  controller: _blockControllers[index],
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'LaTeX形式で数式を入力（例: \\sum_{i=0}^n i^2 = \\frac{n(n+1)(2n+1)}{6}）',
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.arrow_downward),
-                    onPressed: index < _note.blocks.length - 1
-                        ? () {
-                            setState(() {
-                              _note.reorderBlocks(index, index + 1);
-                              final controller = _blockControllers.removeAt(index);
-                              _blockControllers.insert(index + 1, controller);
-                            });
-                          }
-                        : null,
+                  onChanged: (value) {
+                    block.content = value;
+                  },
+                ),
+                // 数式記号パレット（オプション）
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _mathSymbolButton('\\sum', index),
+                      _mathSymbolButton('\\int', index),
+                      _mathSymbolButton('\\frac{a}{b}', index),
+                      _mathSymbolButton('\\sqrt{x}', index),
+                      _mathSymbolButton('x^2', index),
+                      _mathSymbolButton('\\infty', index),
+                      _mathSymbolButton('\\alpha', index),
+                      _mathSymbolButton('\\beta', index),
+                      _mathSymbolButton('\\pi', index),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () {
-                      setState(() {
-                        _note.removeBlock(block.id);
-                        _blockControllers.removeAt(index);
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_upward),
+                      onPressed: index > 0
+                          ? () {
+                              setState(() {
+                                _note.reorderBlocks(index, index - 1);
+                                final controller = _blockControllers.removeAt(index);
+                                _blockControllers.insert(index - 1, controller);
+                              });
+                            }
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_downward),
+                      onPressed: index < _note.blocks.length - 1
+                          ? () {
+                              setState(() {
+                                _note.reorderBlocks(index, index + 1);
+                                final controller = _blockControllers.removeAt(index);
+                                _blockControllers.insert(index + 1, controller);
+                              });
+                            }
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () {
+                        setState(() {
+                          _note.removeBlock(block.id);
+                          _blockControllers.removeAt(index);
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ブロックタイプ選択
+                DropdownButton<BlockType>(
+                  value: block.type,
+                  onChanged: (BlockType? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        block.type = newValue;
+                      });
+                    }
+                  },
+                  items: BlockType.values
+                      .where((type) => type != BlockType.sketch) // 手書きは別途実装
+                          .map<DropdownMenuItem<BlockType>>((BlockType value) {
+                        return DropdownMenuItem<BlockType>(
+                          value: value,
+                          child: Text(_getBlockTypeName(value)),
+                        );
+                      }).toList(),
+                ),
+                const SizedBox(height: 8),
+                // ブロック内容の編集フィールド
+                TextField(
+                  controller: _blockControllers[index],
+                  maxLines: null,
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: _getBlockHint(block.type),
+                  ),
+                  onChanged: (value) {
+                    block.content = value;
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_upward),
+                      onPressed: index > 0
+                          ? () {
+                              setState(() {
+                                _note.reorderBlocks(index, index - 1);
+                                final controller = _blockControllers.removeAt(index);
+                                _blockControllers.insert(index - 1, controller);
+                              });
+                            }
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_downward),
+                      onPressed: index < _note.blocks.length - 1
+                          ? () {
+                              setState(() {
+                                _note.reorderBlocks(index, index + 1);
+                                final controller = _blockControllers.removeAt(index);
+                                _blockControllers.insert(index + 1, controller);
+                              });
+                            }
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () {
+                        setState(() {
+                          _note.removeBlock(block.id);
+                          _blockControllers.removeAt(index);
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      }
     } else {
       // 表示モード
       return GestureDetector(
@@ -236,17 +351,17 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       case BlockType.heading1:
         return Text(
           block.content,
-          style: Theme.of(context).textTheme.headlineMedium,
+          style: Theme.of(context).textTheme.headlineMedium!,
         );
       case BlockType.heading2:
         return Text(
           block.content,
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context).textTheme.titleLarge!,
         );
       case BlockType.heading3:
         return Text(
           block.content,
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context).textTheme.titleMedium!,
         );
       case BlockType.markdown:
         return MarkdownBody(
@@ -274,7 +389,6 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
           },
         );
       case BlockType.sketch:
-        // 手書きスケッチはまだ実装されていないため、プレースホルダーを表示
         return Container(
           height: 200,
           color: Colors.grey[200],
@@ -284,8 +398,16 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         );
       case BlockType.table:
       case BlockType.list:
-        // 実装予定
         return Text(block.content);
+      case BlockType.math:
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          child: Math.tex(
+            block.content,
+            textStyle: Theme.of(context).textTheme.bodyLarge!,
+          ),
+        );
       case BlockType.text:
       default:
         return Text(block.content);
@@ -314,6 +436,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         return '表';
       case BlockType.list:
         return 'リスト';
+      case BlockType.math:
+        return '数式';
       default:
         return type.toString().split('.').last;
     }
@@ -326,13 +450,17 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       case BlockType.markdown:
         return 'Markdownを入力';
       case BlockType.heading1:
+        return '見出しを入力';
       case BlockType.heading2:
+        return '見出しを入力';
       case BlockType.heading3:
         return '見出しを入力';
       case BlockType.code:
         return 'コードを入力';
       case BlockType.image:
         return '画像URLを入力';
+      case BlockType.math:
+        return 'LaTeX形式で数式を入力';
       default:
         return '内容を入力';
     }
@@ -358,122 +486,48 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     // 実際のアプリではこの時点でデータベースに保存
   }
 
-  void _showOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('共有'),
-              onTap: () {
-                Navigator.pop(context);
-                // 共有機能の実装
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.tag),
-              title: const Text('タグ編集'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTagEditor(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('削除'),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteConfirmation(context);
-              },
-            ),
-          ],
-        );
+  // 数式記号ボタン
+  Widget _mathSymbolButton(String symbol, int blockIndex) {
+    return InkWell(
+      onTap: () {
+        final controller = _blockControllers[blockIndex];
+        final currentPosition = controller.selection.start;
+        final text = controller.text;
+        final newText = text.substring(0, currentPosition) +
+            symbol +
+            text.substring(currentPosition);
+        controller.text = newText;
+        controller.selection = TextSelection.collapsed(offset: currentPosition + symbol.length);
       },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Math.tex(
+          symbol,
+          textStyle: const TextStyle(fontSize: 18),
+        ),
+      ),
     );
   }
 
-  void _showTagEditor(BuildContext context) {
-    final TextEditingController tagController = TextEditingController();
+  // 数式プレビューダイアログ
+  void _showMathPreview(BuildContext context, String latex) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('タグ編集'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: tagController,
-                decoration: const InputDecoration(
-                  labelText: '新しいタグ',
-                  hintText: 'タグを入力してEnterキーを押してください',
-                ),
-                onSubmitted: (value) {
-                  if (value.isNotEmpty && !_note.tags.contains(value)) {
-                    setState(() {
-                      _note.tags.add(value);
-                    });
-                    tagController.clear();
-                  }
-                },
+          title: const Text('数式プレビュー'),
+          content: SingleChildScrollView(
+            child: Center(
+              child: Math.tex(
+                latex,
+                textStyle: const TextStyle(fontSize: 20),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _note.tags.map((tag) {
-                  return Chip(
-                    label: Text(tag),
-                    onDeleted: () {
-                      setState(() {
-                        _note.tags.remove(tag);
-                      });
-                      Navigator.pop(context);
-                      _showTagEditor(context);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text('閉じる'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('ノートの削除'),
-          content: const Text('このノートを削除しますか？この操作は元に戻せません。'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                // ノート一覧画面に戻る
-                Navigator.pop(context);
-                // 実際のアプリではここでノートを削除
-              },
-              child: const Text('削除'),
             ),
           ],
         );
