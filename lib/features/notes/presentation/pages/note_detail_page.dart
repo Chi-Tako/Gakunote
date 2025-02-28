@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../../core/models/note.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import '../widgets/math_block_editor.dart';
 
 class NoteDetailPage extends StatefulWidget {
   final String noteId;
