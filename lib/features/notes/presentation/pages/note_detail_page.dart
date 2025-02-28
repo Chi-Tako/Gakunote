@@ -22,7 +22,14 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   final List<TextEditingController> _blockControllers = [];
   bool _isEditing = false;
   
-  // 各ブロックの編集状態を追跡する
+  // フォーカス管理のためのノード
+  final FocusNode _titleFocusNode = FocusNode();
+  final List<FocusNode> _blockFocusNodes = [];
+  
+  // 現在フォーカスされているブロックのインデックス
+  int _focusedBlockIndex = -1;
+
+  // ブロックの編集状態を追跡するマップ
   final Map<String, bool> _blockEditingStates = {};
 
   @override
@@ -33,12 +40,35 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     _note = _getDummyNote(widget.noteId);
     _titleController = TextEditingController(text: _note.title);
     
-    // 各ブロックのコントローラーを初期化
+    // 各ブロックのコントローラーとフォーカスノードを初期化
     for (var block in _note.blocks) {
       _blockControllers.add(TextEditingController(text: block.content));
-      // すべてのブロックの編集状態を初期化（false = 編集モードではない）
+      
+      // 先にFocusNodeを作成してから、リスナーを追加
+      final newFocusNode = FocusNode();
+      newFocusNode.addListener(() {
+        if (newFocusNode.hasFocus) {
+          setState(() {
+            _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
+            // フォーカスされたら編集状態にする
+            _blockEditingStates[block.id] = true;
+          });
+        }
+      });
+      _blockFocusNodes.add(newFocusNode);
+      
+      // 初期状態では編集中ではない
       _blockEditingStates[block.id] = false;
     }
+    
+    // タイトルにフォーカスがあたったときの処理
+    _titleFocusNode.addListener(() {
+      if (_titleFocusNode.hasFocus) {
+        setState(() {
+          _focusedBlockIndex = -1;
+        });
+      }
+    });
   }
 
   @override
@@ -46,6 +76,10 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     _titleController.dispose();
     for (var controller in _blockControllers) {
       controller.dispose();
+    }
+    _titleFocusNode.dispose();
+    for (var node in _blockFocusNodes) {
+      node.dispose();
     }
     super.dispose();
   }
@@ -80,6 +114,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         title: _isEditing
             ? TextField(
                 controller: _titleController,
+                focusNode: _titleFocusNode,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -99,7 +134,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                 if (_isEditing) {
                   // 編集内容を保存
                   _saveChanges();
-                  // すべてのブロックの編集状態をリセット
+                  // 全てのブロックの編集状態をリセット
                   for (var key in _blockEditingStates.keys) {
                     _blockEditingStates[key] = false;
                   }
@@ -117,18 +152,17 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         ],
       ),
       body: _buildNoteContent(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _addNewBlock();
-        },
+      floatingActionButton: _isEditing ? FloatingActionButton(
+        mini: true,
+        onPressed: _addNewBlock,
         child: const Icon(Icons.add),
-      ),
+      ) : null,
     );
   }
 
   Widget _buildNoteContent() {
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: _note.blocks.length,
       itemBuilder: (context, index) {
         final block = _note.blocks[index];
@@ -138,299 +172,267 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   }
 
   Widget _buildBlockWidget(NoteBlock block, int index) {
-    // このブロックが現在編集中かどうかを確認
-    final isBlockEditing = _blockEditingStates[block.id] ?? false;
+    final bool isBlockFocused = _isEditing && _focusedBlockIndex == index;
+    final bool isBlockEditing = _blockEditingStates[block.id] ?? false;
     
-    // 全体が編集モードで、さらにこのブロックも編集モードの場合
-    if (_isEditing && isBlockEditing) {
-      // 編集モード
-      if (block.type == BlockType.math) {
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ブロックタイプ選択と確定ボタン
-                Row(
-                  children: [
-                    DropdownButton<BlockType>(
-                      value: block.type,
-                      onChanged: (BlockType? newValue) {
-                        if (newValue != null) {
-                          setState(() {
-                            block.type = newValue;
-                          });
-                        }
-                      },
-                      items: BlockType.values
-                          .where((type) => type != BlockType.sketch) // 手書きは別途実装
-                          .map<DropdownMenuItem<BlockType>>((BlockType value) {
-                        return DropdownMenuItem<BlockType>(
-                          value: value,
-                          child: Text(_getBlockTypeName(value)),
-                        );
-                      }).toList(),
-                    ),
-                    const Spacer(),
-                    // 確定ボタンを追加
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          // ブロックの内容を保存
-                          block.content = _blockControllers[index].text;
-                          // このブロックの編集状態をオフに
-                          _blockEditingStates[block.id] = false;
-                        });
-                      },
-                      icon: const Icon(Icons.check),
-                      label: const Text('確定'),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        backgroundColor: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // 数式プレビューボタン
-                    IconButton(
-                      icon: const Icon(Icons.preview),
-                      tooltip: '数式プレビュー',
-                      onPressed: () {
-                        // プレビューダイアログを表示
-                        _showMathPreview(context, _blockControllers[index].text);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // 数式の入力フィールド
-                TextField(
-                  controller: _blockControllers[index],
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'LaTeX形式で数式を入力（例: \\sum_{i=0}^n i^2 = \\frac{n(n+1)(2n+1)}{6}）',
-                  ),
-                  onChanged: (value) {
-                    // オートセーブは行わず、確定ボタンを押したときだけ保存する
-                  },
-                ),
-                // 数式記号パレット（オプション）
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _mathSymbolButton('\\sum', index),
-                      _mathSymbolButton('\\int', index),
-                      _mathSymbolButton('\\frac{a}{b}', index),
-                      _mathSymbolButton('\\sqrt{x}', index),
-                      _mathSymbolButton('x^2', index),
-                      _mathSymbolButton('\\infty', index),
-                      _mathSymbolButton('\\alpha', index),
-                      _mathSymbolButton('\\beta', index),
-                      _mathSymbolButton('\\pi', index),
-                    ],
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_upward),
-                      onPressed: index > 0
-                          ? () {
-                              setState(() {
-                                _note.reorderBlocks(index, index - 1);
-                                final controller = _blockControllers.removeAt(index);
-                                _blockControllers.insert(index - 1, controller);
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_downward),
-                      onPressed: index < _note.blocks.length - 1
-                          ? () {
-                              setState(() {
-                                _note.reorderBlocks(index, index + 1);
-                                final controller = _blockControllers.removeAt(index);
-                                _blockControllers.insert(index + 1, controller);
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () {
-                        setState(() {
-                          _note.removeBlock(block.id);
-                          _blockControllers.removeAt(index);
-                          _blockEditingStates.remove(block.id);
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      } else {
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ブロックタイプ選択と確定ボタン
-                Row(
-                  children: [
-                    DropdownButton<BlockType>(
-                      value: block.type,
-                      onChanged: (BlockType? newValue) {
-                        if (newValue != null) {
-                          setState(() {
-                            block.type = newValue;
-                          });
-                        }
-                      },
-                      items: BlockType.values
-                          .where((type) => type != BlockType.sketch) // 手書きは別途実装
-                          .map<DropdownMenuItem<BlockType>>((BlockType value) {
-                        return DropdownMenuItem<BlockType>(
-                          value: value,
-                          child: Text(_getBlockTypeName(value)),
-                        );
-                      }).toList(),
-                    ),
-                    const Spacer(),
-                    // 確定ボタンを追加
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          // ブロックの内容を保存
-                          block.content = _blockControllers[index].text;
-                          // このブロックの編集状態をオフに
-                          _blockEditingStates[block.id] = false;
-                        });
-                      },
-                      icon: const Icon(Icons.check),
-                      label: const Text('確定'),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.white, 
-                        backgroundColor: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // ブロック内容の編集フィールド
-                TextField(
-                  controller: _blockControllers[index],
-                  maxLines: null,
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    hintText: _getBlockHint(block.type),
-                  ),
-                  onChanged: (value) {
-                    // オートセーブは行わず、確定ボタンを押したときだけ保存する
-                  },
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_upward),
-                      onPressed: index > 0
-                          ? () {
-                              setState(() {
-                                _note.reorderBlocks(index, index - 1);
-                                final controller = _blockControllers.removeAt(index);
-                                _blockControllers.insert(index - 1, controller);
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_downward),
-                      onPressed: index < _note.blocks.length - 1
-                          ? () {
-                              setState(() {
-                                _note.reorderBlocks(index, index + 1);
-                                final controller = _blockControllers.removeAt(index);
-                                _blockControllers.insert(index + 1, controller);
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () {
-                        setState(() {
-                          _note.removeBlock(block.id);
-                          _blockControllers.removeAt(index);
-                          _blockEditingStates.remove(block.id);
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-    } else if (_isEditing) {
-      // 全体が編集モードだが、このブロックはまだ編集モードではない
-      return Card(
-        margin: const EdgeInsets.only(bottom: 16),
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              // このブロックの編集状態をオンに
-              _blockEditingStates[block.id] = true;
-              // コントローラーが正しく同期していることを確認
-              _blockControllers[index].text = block.content;
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(child: _renderBlockContent(block)),
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () {
-                    setState(() {
-                      _blockEditingStates[block.id] = true;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } else {
-      // 表示モード (全体が編集モードではない)
-      return GestureDetector(
+    // 表示モードまたはフォーカスされていないブロック
+    if (!_isEditing || !isBlockFocused || !isBlockEditing) {
+      return InkWell(
         onTap: () {
+          if (!_isEditing) {
+            setState(() {
+              _isEditing = true;
+            });
+          }
+          // フォーカスを当該ブロックに移動
+          _blockFocusNodes[index].requestFocus();
           setState(() {
-            _isEditing = true;
             _blockEditingStates[block.id] = true;
           });
         },
-        child: Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: _renderBlockContent(block),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: _renderBlockContent(block),
         ),
       );
     }
+    
+    // 編集モードでフォーカスされていて編集中のブロック
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ブロック編集コントロール (フォーカス時のみ表示)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+            ),
+            child: Row(
+              children: [
+                // ブロックタイプ選択
+                DropdownButton<BlockType>(
+                  value: block.type,
+                  isDense: true,
+                  underline: Container(), // 下線を非表示
+                  icon: const Icon(Icons.arrow_drop_down, size: 20),
+                  onChanged: (BlockType? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        block.type = newValue;
+                      });
+                    }
+                  },
+                  items: BlockType.values
+                      .where((type) => type != BlockType.sketch) // 手書きは別途実装
+                      .map<DropdownMenuItem<BlockType>>((BlockType value) {
+                    return DropdownMenuItem<BlockType>(
+                      value: value,
+                      child: Text(_getBlockTypeName(value), style: const TextStyle(fontSize: 12)),
+                    );
+                  }).toList(),
+                ),
+                const Spacer(),
+                // 確定ボタン
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      // ブロックの内容を保存
+                      block.content = _blockControllers[index].text;
+                      // 編集状態を解除
+                      _blockEditingStates[block.id] = false;
+                    });
+                  },
+                  icon: const Icon(Icons.check, size: 16),
+                  label: const Text('確定', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // ブロック操作アイコン
+                IconButton(
+                  icon: const Icon(Icons.arrow_upward, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: index > 0
+                      ? () {
+                          setState(() {
+                            _note.reorderBlocks(index, index - 1);
+                            final controller = _blockControllers.removeAt(index);
+                            _blockControllers.insert(index - 1, controller);
+                            final focusNode = _blockFocusNodes.removeAt(index);
+                            _blockFocusNodes.insert(index - 1, focusNode);
+                            _focusedBlockIndex = index - 1;
+                            // フォーカスを移動
+                            focusNode.requestFocus();
+                          });
+                        }
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.arrow_downward, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: index < _note.blocks.length - 1
+                      ? () {
+                          setState(() {
+                            _note.reorderBlocks(index, index + 1);
+                            final controller = _blockControllers.removeAt(index);
+                            _blockControllers.insert(index + 1, controller);
+                            final focusNode = _blockFocusNodes.removeAt(index);
+                            _blockFocusNodes.insert(index + 1, focusNode);
+                            _focusedBlockIndex = index + 1;
+                            // フォーカスを移動
+                            focusNode.requestFocus();
+                          });
+                        }
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.delete, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    setState(() {
+                      _note.removeBlock(block.id);
+                      _blockControllers.removeAt(index);
+                      final removedNode = _blockFocusNodes.removeAt(index);
+                      removedNode.dispose();
+                      _blockEditingStates.remove(block.id);
+                      
+                      // フォーカスを前のブロックに移動
+                      if (index > 0 && _blockFocusNodes.isNotEmpty) {
+                        _focusedBlockIndex = index - 1;
+                        _blockFocusNodes[_focusedBlockIndex].requestFocus();
+                      } else if (_blockFocusNodes.isNotEmpty) {
+                        _focusedBlockIndex = 0;
+                        _blockFocusNodes[0].requestFocus();
+                      } else {
+                        _focusedBlockIndex = -1;
+                        _titleFocusNode.requestFocus();
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.add, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _addNewBlockAfter(index);
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          // 特殊ブロックタイプの編集UI
+          if (block.type == BlockType.math)
+            _buildMathBlockEditor(block, index)
+          else
+            // 通常のブロック編集UI
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: TextField(
+                controller: _blockControllers[index],
+                focusNode: _blockFocusNodes[index],
+                maxLines: null,
+                style: _getTextStyleForBlockType(block.type),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: _getBlockHint(block.type),
+                  hintStyle: TextStyle(
+                    fontSize: _getFontSizeForBlockType(block.type),
+                    color: Colors.grey,
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onChanged: (value) {
+                  // リアルタイムで内容を更新
+                  block.content = value;
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 数式ブロックのエディタUI
+  Widget _buildMathBlockEditor(NoteBlock block, int index) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _blockControllers[index],
+            focusNode: _blockFocusNodes[index],
+            maxLines: null,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              hintText: 'LaTeX形式で数式を入力（例: \\sum_{i=0}^n i^2 = \\frac{n(n+1)(2n+1)}{6}）',
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (value) {
+              block.content = value;
+              setState(() {}); // プレビューを更新するために再描画
+            },
+          ),
+          
+          // 数式プレビュー
+          if (_blockControllers[index].text.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              width: double.infinity,
+              child: Math.tex(
+                _blockControllers[index].text,
+                textStyle: Theme.of(context).textTheme.bodyLarge!,
+                onErrorFallback: (err) => Text(
+                  'エラー: $err',
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ),
+            ),
+            
+          // 数式記号パレット
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _mathSymbolButton('\\sum', index),
+                _mathSymbolButton('\\int', index),
+                _mathSymbolButton('\\frac{a}{b}', index),
+                _mathSymbolButton('\\sqrt{x}', index),
+                _mathSymbolButton('x^2', index),
+                _mathSymbolButton('\\infty', index),
+                _mathSymbolButton('\\alpha', index),
+                _mathSymbolButton('\\beta', index),
+                _mathSymbolButton('\\pi', index),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _renderBlockContent(NoteBlock block) {
@@ -489,18 +491,57 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       case BlockType.math:
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Math.tex(
             block.content,
             textStyle: Theme.of(context).textTheme.bodyLarge!,
+            onErrorFallback: (err) => Text(
+              'エラー: $err',
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
           ),
         );
       case BlockType.text:
       default:
-        return Text(block.content);
+        return Text(
+          block.content.isEmpty ? 'タップして編集...' : block.content,
+          style: TextStyle(
+            color: block.content.isEmpty ? Colors.grey : null,
+          ),
+        );
     }
   }
 
+  // ブロックタイプに応じたテキストスタイルを取得
+  TextStyle _getTextStyleForBlockType(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return const TextStyle(fontSize: 24, fontWeight: FontWeight.bold);
+      case BlockType.heading2:
+        return const TextStyle(fontSize: 20, fontWeight: FontWeight.bold);
+      case BlockType.heading3:
+        return const TextStyle(fontSize: 18, fontWeight: FontWeight.bold);
+      case BlockType.code:
+        return const TextStyle(fontFamily: 'monospace');
+      default:
+        return const TextStyle(fontSize: 16);
+    }
+  }
+
+  // ブロックタイプに応じたフォントサイズを取得
+  double _getFontSizeForBlockType(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return 24;
+      case BlockType.heading2:
+        return 20;
+      case BlockType.heading3:
+        return 18;
+      default:
+        return 16;
+    }
+  }
+  
   String _getBlockTypeName(BlockType type) {
     switch (type) {
       case BlockType.text:
@@ -508,11 +549,11 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       case BlockType.markdown:
         return 'Markdown';
       case BlockType.heading1:
-        return '見出し1';
+        return '見出し 1';
       case BlockType.heading2:
-        return '見出し2';
+        return '見出し 2';
       case BlockType.heading3:
-        return '見出し3';
+        return '見出し 3';
       case BlockType.code:
         return 'コード';
       case BlockType.image:
@@ -533,23 +574,23 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   String _getBlockHint(BlockType type) {
     switch (type) {
       case BlockType.text:
-        return 'テキストを入力';
+        return 'テキストを入力...';
       case BlockType.markdown:
-        return 'Markdownを入力';
+        return 'Markdownを入力...';
       case BlockType.heading1:
-        return '見出しを入力';
+        return '見出し 1';
       case BlockType.heading2:
-        return '見出しを入力';
+        return '見出し 2';
       case BlockType.heading3:
-        return '見出しを入力';
+        return '見出し 3';
       case BlockType.code:
-        return 'コードを入力';
+        return 'コードを入力...';
       case BlockType.image:
-        return '画像URLを入力';
+        return '画像URLを入力...';
       case BlockType.math:
-        return 'LaTeX形式で数式を入力';
+        return 'LaTeX形式で数式を入力...';
       default:
-        return '内容を入力';
+        return '内容を入力...';
     }
   }
 
@@ -560,18 +601,80 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         content: '',
       );
       _note.addBlock(newBlock);
-      _blockControllers.add(TextEditingController());
+      
+      // TextEditingControllerの作成
+      final controller = TextEditingController();
+      _blockControllers.add(controller);
+      
+      // FocusNodeの作成 - 宣言を先に行う
+      final newFocusNode = FocusNode();
+      
+      // リスナー追加
+      newFocusNode.addListener(() {
+        if (newFocusNode.hasFocus) {
+          setState(() {
+            _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
+          });
+        }
+      });
+      
+      // リストに追加
+      _blockFocusNodes.add(newFocusNode);
+      
       _isEditing = true;
-      // 新しいブロックは自動的に編集モードに
+      
+      // 新しいブロックは自動的に編集状態に
       _blockEditingStates[newBlock.id] = true;
+      
+      // 新しいブロックにフォーカスを移動
+      _focusedBlockIndex = _note.blocks.length - 1;
+      newFocusNode.requestFocus();
+    });
+  }
+  
+  void _addNewBlockAfter(int index) {
+    setState(() {
+      final newBlock = NoteBlock(
+        type: BlockType.text,
+        content: '',
+      );
+      
+      // ブロックをindexの後ろに挿入
+      _note.blocks.insert(index + 1, newBlock);
+      
+      // コントローラーを作成・挿入
+      final controller = TextEditingController();
+      _blockControllers.insert(index + 1, controller);
+      
+      // FocusNodeを作成 - 宣言を先に行う
+      final newFocusNode = FocusNode();
+      
+      // リスナー追加
+      newFocusNode.addListener(() {
+        if (newFocusNode.hasFocus) {
+          setState(() {
+            _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
+          });
+        }
+      });
+      
+      // フォーカスノードを挿入
+      _blockFocusNodes.insert(index + 1, newFocusNode);
+      
+      // 新しいブロックは自動的に編集状態に
+      _blockEditingStates[newBlock.id] = true;
+      
+      // 新しいブロックにフォーカスを移動
+      _focusedBlockIndex = index + 1;
+      newFocusNode.requestFocus();
     });
   }
 
   void _saveChanges() {
     _note.title = _titleController.text;
-    // 確定済みのブロックのみ保存されている状態なので、
-    // ここでは全体の保存処理のみ行う
-    
+    for (int i = 0; i < _note.blocks.length; i++) {
+      _note.blocks[i].content = _blockControllers[i].text;
+    }
     // 実際のアプリではこの時点でデータベースに保存
   }
 
@@ -581,46 +684,36 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       onTap: () {
         final controller = _blockControllers[blockIndex];
         final currentPosition = controller.selection.start;
-        final text = controller.text;
-        final newText = text.substring(0, currentPosition) +
-            symbol +
-            text.substring(currentPosition);
-        controller.text = newText;
-        controller.selection = TextSelection.collapsed(offset: currentPosition + symbol.length);
+        
+        // 選択位置が無効な場合は最後に追加
+        if (currentPosition < 0) {
+          controller.text = controller.text + symbol;
+          controller.selection = TextSelection.collapsed(offset: controller.text.length);
+        } else {
+          final text = controller.text;
+          final newText = text.substring(0, currentPosition) +
+              symbol +
+              text.substring(currentPosition);
+          controller.text = newText;
+          controller.selection = TextSelection.collapsed(offset: currentPosition + symbol.length);
+        }
+        
+        // ブロックの内容を更新
+        _note.blocks[blockIndex].content = controller.text;
+        setState(() {}); // 数式プレビューを更新
       },
-      child: Padding(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(4),
+        ),
         child: Math.tex(
           symbol,
-          textStyle: const TextStyle(fontSize: 18),
+          textStyle: const TextStyle(fontSize: 14),
         ),
       ),
-    );
-  }
-
-  // 数式プレビューダイアログ
-  void _showMathPreview(BuildContext context, String latex) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('数式プレビュー'),
-          content: SingleChildScrollView(
-            child: Center(
-              child: Math.tex(
-                latex,
-                textStyle: const TextStyle(fontSize: 20),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-          ],
-        );
-      },
     );
   }
 }
