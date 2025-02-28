@@ -316,18 +316,13 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
                       final removedNode = _blockFocusNodes.removeAt(index);
                       removedNode.dispose();
                       _blockEditingStates.remove(block.id);
-                      
-                      // フォーカスを前のブロックに移動
-                      if (index > 0 && _blockFocusNodes.isNotEmpty) {
-                        _focusedBlockIndex = index - 1;
-                        _blockFocusNodes[_focusedBlockIndex].requestFocus();
-                      } else if (_blockFocusNodes.isNotEmpty) {
-                        _focusedBlockIndex = 0;
-                        _blockFocusNodes[0].requestFocus();
-                      } else {
-                        _focusedBlockIndex = -1;
-                        _titleFocusNode.requestFocus();
-                      }
+
+                      // 削除後はフォーカスを外す（編集状態からの脱出）
+                      _focusedBlockIndex = -1;
+                      FocusScope.of(context).unfocus();
+
+                      // または必要であれば、次の操作を明示的に選べるようなUIを表示
+                      // _showPostDeletionOptions(context);
                     });
                   },
                 ),
