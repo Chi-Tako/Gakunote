@@ -1,10 +1,11 @@
+// lib/core/services/note_service.dart
 import 'package:flutter/foundation.dart';
 import '../models/note.dart';
-import '../repositories/note_repository.dart';
+import 'storage/storage_service_factory.dart';
 
 /// ノート関連のビジネスロジックと状態管理を提供するサービスクラス
 class NoteService extends ChangeNotifier {
-  final NoteRepository _noteRepository = NoteRepository();
+  final StorageServiceFactory _storageFactory = StorageServiceFactory();
   
   // 現在のノート一覧
   List<Note> _notes = [];
@@ -31,9 +32,17 @@ class NoteService extends ChangeNotifier {
   // 初期化処理
   Future<void> initialize() async {
     _setLoading(true);
+    
     try {
+      // ストレージファクトリの初期化
+      await _storageFactory.initialize();
+      
+      // ノート一覧の読み込み
+      await _refreshNotes();
+      
+      // タグの読み込み
       await _loadTags();
-      // _loadNotes()はStreamなので、ここでは呼び出さない
+      
       _setLoading(false);
     } catch (e) {
       _setLoading(false);
@@ -41,30 +50,24 @@ class NoteService extends ChangeNotifier {
     }
   }
   
-  // ノート一覧を読み込む
-  void loadNotes() {
-    _noteRepository.getNotes().listen((notes) {
-      _notes = notes;
+  // ノート一覧を再読み込み
+  Future<void> _refreshNotes() async {
+    try {
+      final storageService = _storageFactory.getStorageService();
+      _notes = await storageService.getNotes();
+      _favoriteNotes = await storageService.getFavoriteNotes();
       notifyListeners();
-    }, onError: (e) {
-      print('ノート一覧の取得中にエラーが発生しました: $e');
-    });
-  }
-  
-  // お気に入りノート一覧を読み込む
-  void loadFavoriteNotes() {
-    _noteRepository.getFavoriteNotes().listen((notes) {
-      _favoriteNotes = notes;
-      notifyListeners();
-    }, onError: (e) {
-      print('お気に入りノート一覧の取得中にエラーが発生しました: $e');
-    });
+    } catch (e) {
+      print('ノート一覧の読み込み中にエラーが発生しました: $e');
+    }
   }
   
   // タグリストを読み込む
   Future<void> _loadTags() async {
     try {
-      _tags = await _noteRepository.getAllTags();
+      final storageService = _storageFactory.getStorageService();
+      _tags = await storageService.getAllTags();
+      notifyListeners();
     } catch (e) {
       print('タグリストの取得中にエラーが発生しました: $e');
     }
@@ -73,8 +76,10 @@ class NoteService extends ChangeNotifier {
   // 特定のノートを読み込む
   Future<Note?> getNoteById(String id) async {
     _setLoading(true);
+    
     try {
-      final note = await _noteRepository.getNoteById(id);
+      final storageService = _storageFactory.getStorageService();
+      final note = await storageService.getNoteById(id);
       _currentNote = note;
       _setLoading(false);
       notifyListeners();
@@ -89,11 +94,16 @@ class NoteService extends ChangeNotifier {
   // ノートを保存（作成または更新）
   Future<void> saveNote(Note note) async {
     _setLoading(true);
+    
     try {
-      await _noteRepository.saveNote(note);
+      final storageService = _storageFactory.getStorageService();
+      await storageService.saveNote(note);
       _currentNote = note;
+      
+      // ノート一覧を更新
+      await _refreshNotes();
+      
       _setLoading(false);
-      notifyListeners();
     } catch (e) {
       _setLoading(false);
       print('ノートの保存中にエラーが発生しました: $e');
@@ -103,13 +113,19 @@ class NoteService extends ChangeNotifier {
   // ノートを削除
   Future<void> deleteNote(String id) async {
     _setLoading(true);
+    
     try {
-      await _noteRepository.deleteNote(id);
+      final storageService = _storageFactory.getStorageService();
+      await storageService.deleteNote(id);
+      
       if (_currentNote?.id == id) {
         _currentNote = null;
       }
+      
+      // ノート一覧を更新
+      await _refreshNotes();
+      
       _setLoading(false);
-      notifyListeners();
     } catch (e) {
       _setLoading(false);
       print('ノートの削除中にエラーが発生しました: $e');
@@ -119,13 +135,18 @@ class NoteService extends ChangeNotifier {
   // お気に入り状態を切り替え
   Future<void> toggleFavorite(String id) async {
     try {
-      await _noteRepository.toggleFavorite(id);
+      final storageService = _storageFactory.getStorageService();
+      await storageService.toggleFavorite(id);
       
       // 現在開いているノートの場合は状態を更新
       if (_currentNote?.id == id) {
-        _currentNote = await _noteRepository.getNoteById(id);
-        notifyListeners();
+        _currentNote = await storageService.getNoteById(id);
       }
+      
+      // ノート一覧を更新
+      await _refreshNotes();
+      
+      notifyListeners();
     } catch (e) {
       print('お気に入り状態の切り替え中にエラーが発生しました: $e');
     }
@@ -150,6 +171,63 @@ class NoteService extends ChangeNotifier {
     _currentNote = note;
     notifyListeners();
     return note;
+  }
+  
+  // 特定のタグを持つノートをフィルタリング
+  Future<List<Note>> getNotesByTag(String tag) async {
+    final storageService = _storageFactory.getStorageService();
+    return await storageService.getNotesByTag(tag);
+  }
+  
+  // データをエクスポート
+  Future<Map<String, dynamic>> exportData() async {
+    final storageService = _storageFactory.getStorageService();
+    return await storageService.exportData();
+  }
+  
+  // データをインポート
+  Future<bool> importData(Map<String, dynamic> data) async {
+    final storageService = _storageFactory.getStorageService();
+    final result = await storageService.importData(data);
+    
+    if (result) {
+      // データを再読み込み
+      await _refreshNotes();
+      await _loadTags();
+    }
+    
+    return result;
+  }
+  
+  // クラウド同期の有効/無効を切り替え
+  Future<void> toggleCloudSync(bool enabled) async {
+    await _storageFactory.setCloudSyncEnabled(enabled);
+    
+    // データを再読み込み
+    await _refreshNotes();
+    
+    notifyListeners();
+  }
+  
+  // クラウド同期が有効かどうか
+  bool get isCloudSyncEnabled => _storageFactory.isCloudSyncEnabled;
+  
+  // 現在のストレージタイプ
+  String get currentStorageType => _storageFactory.currentStorageType;
+  
+  // 手動でクラウド同期を実行
+  Future<void> syncWithCloud() async {
+    _setLoading(true);
+    
+    try {
+      await _storageFactory.syncData();
+      await _refreshNotes();
+      await _loadTags();
+      _setLoading(false);
+    } catch (e) {
+      _setLoading(false);
+      print('クラウド同期中にエラーが発生しました: $e');
+    }
   }
   
   // ローディング状態を設定
