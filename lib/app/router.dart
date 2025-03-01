@@ -32,22 +32,7 @@ final appRouter = GoRouter(
       builder: (context, state) => const SignupPage(),
     ),
   ],
-  // リダイレクト処理（認証状態に応じて）
-  // 認証機能が実装されるまでコメントアウト
-  /*
-  redirect: (context, state) {
-    final isLoggedIn = false; // 認証状態の確認（後で実装）
-    final isAuthRoute = state.fullPath == '/login' || state.fullPath == '/signup';
-    
-    if (!isLoggedIn && !isAuthRoute) {
-      return '/login';
-    }
-    
-    if (isLoggedIn && isAuthRoute) {
-      return '/notes';
-    }
-    
-    return null;
-  },
-  */
+  // 以下を追加
+  redirectLimit: 10, // リダイレクト制限
+  debugLogDiagnostics: true, // デバッグログを有効化（開発時に便利）
 );

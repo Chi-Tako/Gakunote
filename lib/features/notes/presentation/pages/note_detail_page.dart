@@ -23,17 +23,17 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   late TextEditingController _titleController;
   final List<TextEditingController> _blockControllers = [];
   bool _isEditing = false;
-  
+
   // フォーカス管理のためのノード
   final FocusNode _titleFocusNode = FocusNode();
   final List<FocusNode> _blockFocusNodes = [];
-  
+
   // 現在フォーカスされているブロックのインデックス
   int _focusedBlockIndex = -1;
 
   // ブロックの編集状態を追跡するマップ
   final Map<String, bool> _blockEditingStates = {};
-  
+
   // ブロック操作サービス
   late BlockOperationsService _blockOperations;
 
@@ -44,7 +44,7 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     // ここではダミーデータを使用
     _note = _getDummyNote(widget.noteId);
     _titleController = TextEditingController(text: _note.title);
-    
+
     // ブロック操作サービスの初期化
     _blockOperations = BlockOperationsService(
       note: _note,
@@ -60,29 +60,33 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         setState(() {});
       },
     );
-    
+
     // 各ブロックのコントローラーとフォーカスノードを初期化
     for (var block in _note.blocks) {
       final controller = TextEditingController(text: block.content);
       _blockControllers.add(controller);
-      
+
       // 先にFocusNodeを作成してから、リスナーを追加
       final newFocusNode = FocusNode();
       newFocusNode.addListener(() {
         if (newFocusNode.hasFocus) {
           setState(() {
             _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
-            // フォーカスされたら編集状態にする
+            // すべてのブロックの編集状態をリセット
+            for (var key in _blockEditingStates.keys) {
+              _blockEditingStates[key] = false;
+            }
+            // フォーカスされたブロックを編集状態にする
             _blockEditingStates[block.id] = true;
           });
         }
       });
       _blockFocusNodes.add(newFocusNode);
-      
+
       // 初期状態では編集中ではない
       _blockEditingStates[block.id] = false;
     }
-    
+
     // タイトルにフォーカスがあたったときの処理
     _titleFocusNode.addListener(() {
       if (_titleFocusNode.hasFocus) {
@@ -161,17 +165,18 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         titleFocusNode: _titleFocusNode,
         onEditToggle: _toggleEditMode,
         onOptionsPressed: () {
-          // オプションメニューを表示（後で実装）
-        },
-      ),
+            // オプションメニューを表示（後で実装）
+          },
+          showBackButton: true, // 戻るボタンを表示
+        ),
       body: _buildNoteContent(),
-      floatingActionButton: _isEditing 
-        ? FloatingActionButton(
-            mini: true,
-            onPressed: () => _blockOperations.addNewBlock(),
-            child: const Icon(Icons.add),
-          ) 
-        : null,
+      floatingActionButton: _isEditing
+          ? FloatingActionButton(
+              mini: true,
+              onPressed: () => _blockOperations.addNewBlock(),
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
@@ -181,22 +186,29 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
       itemCount: _note.blocks.length,
       itemBuilder: (context, index) {
         final block = _note.blocks[index];
-        final bool isBlockFocused = _isEditing && _focusedBlockIndex == index;
         final bool isBlockEditing = _blockEditingStates[block.id] ?? false;
-        
-        // 表示モードまたはフォーカスされていないブロック
-        if (!_isEditing || !isBlockFocused || !isBlockEditing) {
+
+        // 表示モードまたは編集中でないブロック
+        if (!_isEditing || !isBlockEditing) {
           return InkWell(
             onTap: () {
-              if (!_isEditing) {
-                setState(() {
-                  _isEditing = true;
-                });
-              }
-              // フォーカスを当該ブロックに移動
-              _blockFocusNodes[index].requestFocus();
               setState(() {
+                // 表示モードの場合は編集モードに切り替える
+                if (!_isEditing) {
+                  _isEditing = true;
+                }
+
+                // すべてのブロックの編集状態をリセット
+                for (var key in _blockEditingStates.keys) {
+                  _blockEditingStates[key] = false;
+                }
+
+                // タップされたブロックを編集状態にする
                 _blockEditingStates[block.id] = true;
+
+                // フォーカスを設定
+                _focusedBlockIndex = index;
+                _blockFocusNodes[index].requestFocus();
               });
             },
             child: Padding(
@@ -205,8 +217,8 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
             ),
           );
         }
-        
-        // 編集モードでフォーカスされていて編集中のブロック
+
+        // 編集モードで編集中のブロック
         return BlockEditor(
           block: block,
           index: index,
@@ -226,15 +238,15 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
             });
           },
           onMoveUp: index > 0
-            ? () {
-                _blockOperations.moveBlockUp(index);
-              }
-            : null,
+              ? () {
+                  _blockOperations.moveBlockUp(index);
+                }
+              : null,
           onMoveDown: index < _note.blocks.length - 1
-            ? () {
-                _blockOperations.moveBlockDown(index);
-              }
-            : null,
+              ? () {
+                  _blockOperations.moveBlockDown(index);
+                }
+              : null,
           onDelete: () {
             _blockOperations.deleteBlock(index);
           },
