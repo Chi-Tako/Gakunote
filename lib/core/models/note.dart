@@ -1,5 +1,6 @@
-// lib/core/models/note.dart
+import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+// lib/core/models/note.dart
 
 class Note {
   final String id;
@@ -191,9 +192,9 @@ class SketchMetadata {
     );
   }
 }
-import 'package:hive/hive.dart';
 
-class NoteAdapter extends HiveTypeAdapter<Note> {
+
+class NoteAdapter extends TypeAdapter<Note> {
   @override
   final typeId = 0; // 一意なID
 
@@ -226,7 +227,7 @@ class NoteAdapter extends HiveTypeAdapter<Note> {
       ..writeByte(2)
       ..write(obj.content)
       ..writeByte(3)
-      ..write(obj.blocks)
+      ..write(obj.blocks.map((e) => e.toJson()).toList())
       ..writeByte(4)
       ..write(obj.createdAt)
       ..writeByte(5)
@@ -235,5 +236,54 @@ class NoteAdapter extends HiveTypeAdapter<Note> {
       ..write(obj.tags)
       ..writeByte(7)
       ..write(obj.isFavorite);
+  }
+}
+
+class NoteBlockAdapter extends TypeAdapter<NoteBlock> {
+  @override
+  final typeId = 1; // 一意なID
+
+  @override
+  NoteBlock read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return NoteBlock(
+      id: fields[0] as String?,
+      type: fields[1] as BlockType,
+      content: fields[2] as String,
+      metadata: (fields[3] as Map?)?.cast<String, dynamic>() ?? {},
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, NoteBlock obj) {
+    writer
+      ..writeByte(4)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.type)
+      ..writeByte(2)
+      ..write(obj.content)
+      ..writeByte(3)
+      ..write(obj.metadata);
+  }
+}
+
+class BlockTypeAdapter extends TypeAdapter<BlockType> {
+  @override
+  final typeId = 2; // 一意なID
+
+  @override
+  BlockType read(BinaryReader reader) {
+    final index = reader.readByte();
+    return BlockType.values[index];
+  }
+
+  @override
+  void write(BinaryWriter writer, BlockType obj) {
+    writer.writeByte(obj.index);
   }
 }

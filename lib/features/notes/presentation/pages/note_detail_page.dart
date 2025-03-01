@@ -44,7 +44,9 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
   @override
   void initState() {
     super.initState();
-    _loadNote();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadNote();
+    });
   }
 
   @override

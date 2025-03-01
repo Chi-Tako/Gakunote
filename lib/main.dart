@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'core/models/note.dart';
 import 'firebase_options.dart';
 import 'app/app.dart';
 import 'app/providers.dart';
@@ -36,6 +37,8 @@ void main() async {
 
     // Register Hive adapters
     Hive.registerAdapter(NoteAdapter());
+    Hive.registerAdapter(NoteBlockAdapter());
+    Hive.registerAdapter(BlockTypeAdapter());
 
     runApp(const AppProviders(
       child: GakunoteApp(),
