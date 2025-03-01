@@ -21,7 +21,7 @@ class AppSettingsService extends ChangeNotifier {
   static const bool _defaultShowWordCount = false;
   
   // フィールド
-  late SharedPreferences _prefs;
+  late final SharedPreferences _prefs;
   ThemeMode _themeMode = _defaultThemeMode;
   double _fontSize = _defaultFontSize;
   bool _useSansSerif = _defaultUseSansSerif;

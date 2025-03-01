@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 class Note {
   final String id;
   String title;
+  String content;
   List<NoteBlock> blocks;
   DateTime createdAt;
   DateTime updatedAt;
@@ -13,6 +14,7 @@ class Note {
   Note({
     String? id,
     required this.title,
+    required this.content,
     List<NoteBlock>? blocks,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -29,6 +31,7 @@ class Note {
     return {
       'id': id,
       'title': title,
+      'content': content,
       'blocks': blocks.map((block) => block.toJson()).toList(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -42,6 +45,7 @@ class Note {
     return Note(
       id: json['id'],
       title: json['title'],
+      content: json['content'],
       blocks: (json['blocks'] as List)
           .map((blockJson) => NoteBlock.fromJson(blockJson))
           .toList(),
@@ -55,11 +59,13 @@ class Note {
   // ノートを更新するメソッド
   void update({
     String? title,
+    String? content,
     List<NoteBlock>? blocks,
     List<String>? tags,
     bool? isFavorite,
   }) {
     if (title != null) this.title = title;
+    if (content != null) this.content = content;
     if (blocks != null) this.blocks = blocks;
     if (tags != null) this.tags = tags;
     if (isFavorite != null) this.isFavorite = isFavorite;
@@ -183,5 +189,51 @@ class SketchMetadata {
       strokes: List<Map<String, dynamic>>.from(json['strokes']),
       recognizedTextMapping: Map<String, String>.from(json['recognizedTextMapping']),
     );
+  }
+}
+import 'package:hive/hive.dart';
+
+class NoteAdapter extends HiveTypeAdapter<Note> {
+  @override
+  final typeId = 0; // 一意なID
+
+  @override
+  Note read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return Note(
+      id: fields[0] as String?,
+      title: fields[1] as String,
+      content: fields[2] as String,
+      blocks: (fields[3] as List?)?.cast<NoteBlock>(),
+      createdAt: fields[4] as DateTime?,
+      updatedAt: fields[5] as DateTime?,
+      tags: (fields[6] as List?)?.cast<String>(),
+      isFavorite: fields[7] as bool? ?? false,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, Note obj) {
+    writer
+      ..writeByte(8)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.title)
+      ..writeByte(2)
+      ..write(obj.content)
+      ..writeByte(3)
+      ..write(obj.blocks)
+      ..writeByte(4)
+      ..write(obj.createdAt)
+      ..writeByte(5)
+      ..write(obj.updatedAt)
+      ..writeByte(6)
+      ..write(obj.tags)
+      ..writeByte(7)
+      ..write(obj.isFavorite);
   }
 }

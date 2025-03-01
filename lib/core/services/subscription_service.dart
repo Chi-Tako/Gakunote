@@ -1,9 +1,9 @@
 // lib/core/services/subscription_service.dart
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'storage/local_storage_service.dart';
+import '../models/note.dart';
 
 /// 有料機能とサブスクリプション管理を行うサービス
 class SubscriptionService extends ChangeNotifier {
@@ -13,22 +13,22 @@ class SubscriptionService extends ChangeNotifier {
   static const String _subscriptionIdKey = 'subscriptionId';
   static const String _purchaseDateKey = 'purchaseDate';
   static const String _subscriptionTypeKey = 'subscriptionType';
-  
+
   // フィールド
   bool _isPremium = false;
   DateTime? _subscriptionExpiry;
   String? _subscriptionId;
   DateTime? _purchaseDate;
   SubscriptionType _subscriptionType = SubscriptionType.none;
-  
+
   // ローカルストレージサービス
   final LocalStorageService _localStorageService = LocalStorageService();
-  
+
   // Firebase関連
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isInitialized = false;
-  
+
   // ゲッター
   bool get isPremium => _isPremium;
   DateTime? get subscriptionExpiry => _subscriptionExpiry;
@@ -37,32 +37,34 @@ class SubscriptionService extends ChangeNotifier {
   SubscriptionType get subscriptionType => _subscriptionType;
   SubscriptionTier get currentTier => _isPremium ? SubscriptionTier.premium : SubscriptionTier.free;
   bool get isInitialized => _isInitialized;
-  
+
   /// 初期化処理
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     try {
       // ストレージサービスの初期化
       await _localStorageService.initialize();
-      
+
       // サブスクリプション状態の読み込み
       await _loadSubscriptionStatus();
-      
+
       _isInitialized = true;
     } catch (e) {
       debugPrint('SubscriptionServiceの初期化に失敗しました: $e');
     }
   }
-  
+
   /// サブスクリプション状態の読み込み
   Future<void> _loadSubscriptionStatus() async {
     try {
       // ローカルからサブスクリプション状態を読み込む
-      _isPremium = _localStorageService.getSetting(_premiumStatusKey, defaultValue: false);
-      
+      final premiumNote = await _localStorageService.getNoteById(_premiumStatusKey);
+      _isPremium = premiumNote?.content == 'true';
+
       // サブスクリプション有効期限
-      final expiryStr = _localStorageService.getSetting(_subscriptionExpiryKey);
+      final expiryNote = await _localStorageService.getNoteById(_subscriptionExpiryKey);
+      final expiryStr = expiryNote?.content;
       if (expiryStr != null) {
         try {
           _subscriptionExpiry = DateTime.parse(expiryStr);
@@ -70,12 +72,14 @@ class SubscriptionService extends ChangeNotifier {
           _subscriptionExpiry = null;
         }
       }
-      
+
       // サブスクリプションID
-      _subscriptionId = _localStorageService.getSetting(_subscriptionIdKey);
-      
+      final subscriptionIdNote = await _localStorageService.getNoteById(_subscriptionIdKey);
+      _subscriptionId = subscriptionIdNote?.content;
+
       // 購入日
-      final purchaseDateStr = _localStorageService.getSetting(_purchaseDateKey);
+      final purchaseDateNote = await _localStorageService.getNoteById(_purchaseDateKey);
+      final purchaseDateStr = purchaseDateNote?.content;
       if (purchaseDateStr != null) {
         try {
           _purchaseDate = DateTime.parse(purchaseDateStr);
@@ -83,11 +87,16 @@ class SubscriptionService extends ChangeNotifier {
           _purchaseDate = null;
         }
       }
-      
+
       // サブスクリプションタイプ
-      final subscriptionTypeInt = _localStorageService.getSetting(_subscriptionTypeKey, defaultValue: 0);
+      final subscriptionTypeNote = await _localStorageService.getNoteById(_subscriptionTypeKey);
+      final subscriptionTypeStr = subscriptionTypeNote?.content;
+      int subscriptionTypeInt = 0;
+      if (subscriptionTypeStr != null) {
+        subscriptionTypeInt = int.parse(subscriptionTypeStr);
+      }
       _subscriptionType = SubscriptionType.values[subscriptionTypeInt];
-      
+
       // 有効期限が切れている場合は無料プランに戻す
       if (_subscriptionExpiry != null && _subscriptionExpiry!.isBefore(DateTime.now())) {
         _isPremium = false;
@@ -95,22 +104,22 @@ class SubscriptionService extends ChangeNotifier {
         _subscriptionType = SubscriptionType.none;
         await _saveSubscriptionStatus();
       }
-      
+
       // ログインしている場合はクラウドから最新情報を取得
       await _syncWithCloud();
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('サブスクリプション状態の読み込みに失敗しました: $e');
     }
   }
-  
+
   /// クラウドからサブスクリプション情報を取得してローカルと同期
   Future<void> _syncWithCloud() async {
     try {
       final user = _auth.currentUser;
       if (user == null) return;
-      
+
       // ユーザーのサブスクリプション情報をFirestoreから取得
       final doc = await _firestore
           .collection('users')
@@ -118,23 +127,23 @@ class SubscriptionService extends ChangeNotifier {
           .collection('subscription')
           .doc('current')
           .get();
-      
+
       if (doc.exists) {
         final data = doc.data();
         if (data != null) {
           // クラウドのサブスクリプション情報で上書き
           final cloudIsPremium = data['isPremium'] ?? false;
-          final cloudExpiryDate = data['expiryDate'] != null 
-              ? (data['expiryDate'] as Timestamp).toDate() 
+          final cloudExpiryDate = data['expiryDate'] != null
+              ? (data['expiryDate'] as Timestamp).toDate()
               : null;
           final cloudSubscriptionId = data['subscriptionId'] as String?;
-          final cloudPurchaseDate = data['purchaseDate'] != null 
-              ? (data['purchaseDate'] as Timestamp).toDate() 
+          final cloudPurchaseDate = data['purchaseDate'] != null
+              ? (data['purchaseDate'] as Timestamp).toDate()
               : null;
           final cloudSubscriptionTypeInt = data['subscriptionType'] ?? 0;
-          
+
           // ローカルの方が新しい場合はクラウドを更新
-          if (_subscriptionExpiry != null && cloudExpiryDate != null && 
+          if (_subscriptionExpiry != null && cloudExpiryDate != null &&
               _subscriptionExpiry!.isAfter(cloudExpiryDate)) {
             await _updateCloudSubscription();
           } else {
@@ -144,7 +153,7 @@ class SubscriptionService extends ChangeNotifier {
             _subscriptionId = cloudSubscriptionId;
             _purchaseDate = cloudPurchaseDate;
             _subscriptionType = SubscriptionType.values[cloudSubscriptionTypeInt];
-            
+
             // ローカルに保存
             await _saveSubscriptionStatus();
           }
@@ -159,13 +168,13 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('クラウドとの同期に失敗しました: $e');
     }
   }
-  
+
   /// クラウドのサブスクリプション情報を更新
   Future<void> _updateCloudSubscription() async {
     try {
       final user = _auth.currentUser;
       if (user == null) return;
-      
+
       await _firestore
           .collection('users')
           .doc(user.uid)
@@ -183,34 +192,28 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('クラウドの更新に失敗しました: $e');
     }
   }
-  
+
   /// サブスクリプション状態の保存
   Future<void> _saveSubscriptionStatus() async {
-    await _localStorageService.setSetting(_premiumStatusKey, _isPremium);
-    
+    await _localStorageService.saveNote(Note(id: _premiumStatusKey, title: '', content: _isPremium.toString()));
+
     if (_subscriptionExpiry != null) {
-      await _localStorageService.setSetting(
-        _subscriptionExpiryKey, 
-        _subscriptionExpiry!.toIso8601String()
-      );
+      await _localStorageService.saveNote(Note(id: _subscriptionExpiryKey, title: '', content: _subscriptionExpiry!.toIso8601String()));
     } else {
-      await _localStorageService.setSetting(_subscriptionExpiryKey, null);
+      await _localStorageService.saveNote(Note(id: _subscriptionExpiryKey, title: '', content: ''));
     }
-    
-    await _localStorageService.setSetting(_subscriptionIdKey, _subscriptionId);
-    
+
+    await _localStorageService.saveNote(Note(id: _subscriptionIdKey, title: '', content: _subscriptionId ?? ''));
+
     if (_purchaseDate != null) {
-      await _localStorageService.setSetting(
-        _purchaseDateKey, 
-        _purchaseDate!.toIso8601String()
-      );
+      await _localStorageService.saveNote(Note(id: _purchaseDateKey, title: '', content: _purchaseDate!.toIso8601String()));
     } else {
-      await _localStorageService.setSetting(_purchaseDateKey, null);
+      await _localStorageService.saveNote(Note(id: _purchaseDateKey, title: '', content: ''));
     }
-    
-    await _localStorageService.setSetting(_subscriptionTypeKey, _subscriptionType.index);
+
+    await _localStorageService.saveNote(Note(id: _subscriptionTypeKey, title: '', content: _subscriptionType.index.toString()));
   }
-  
+
   /// プレミアムユーザーかどうか
   Future<bool> isPremiumUser() async {
     // 最新の状態を読み込む
@@ -219,7 +222,7 @@ class SubscriptionService extends ChangeNotifier {
     }
     return _isPremium;
   }
-  
+
   /// サブスクリプションを購入
   /// 実際のアプリでは課金APIと連携する必要あり
   Future<bool> purchasePremium({int months = 1}) async {
@@ -228,32 +231,32 @@ class SubscriptionService extends ChangeNotifier {
       if (!_isInitialized) {
         await initialize();
       }
-      
+
       // 実際のアプリでは、ここで課金APIを呼び出す
       // 例: final purchaseResult = await InAppPurchase.instance.buyNonConsumable(...);
-      
+
       // 購入成功とする（実際には課金APIの結果による）
       _isPremium = true;
-      
+
       // サブスクリプションタイプを設定
       _subscriptionType = months == 12 ? SubscriptionType.yearly : SubscriptionType.monthly;
-      
+
       // 購入日を設定
       _purchaseDate = DateTime.now();
-      
+
       // 有効期限を設定
       final now = DateTime.now();
       _subscriptionExpiry = DateTime(now.year, now.month + months, now.day);
-      
+
       // サブスクリプションIDを生成（実際には課金APIから取得）
       _subscriptionId = 'sub_${DateTime.now().millisecondsSinceEpoch}';
-      
+
       // 状態を保存
       await _saveSubscriptionStatus();
-      
+
       // クラウドにも保存
       await _updateCloudSubscription();
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -261,7 +264,7 @@ class SubscriptionService extends ChangeNotifier {
       return false;
     }
   }
-  
+
   /// サブスクリプションをキャンセル
   /// 実際のアプリでは課金APIと連携する必要あり
   Future<bool> cancelSubscription() async {
@@ -270,23 +273,23 @@ class SubscriptionService extends ChangeNotifier {
       if (!_isInitialized) {
         await initialize();
       }
-      
+
       // 実際のアプリでは、ここで課金APIを呼び出す
       // 例: final result = await InAppPurchase.instance.finishTransaction(...);
-      
+
       // キャンセル成功とする（実際には課金APIの結果による）
       // 注意: 有料期間が終了するまではプレミアム状態を維持
       // ここでは即時キャンセルのデモとして実装
       _isPremium = false;
       _subscriptionExpiry = null;
       _subscriptionType = SubscriptionType.none;
-      
+
       // 状態を保存
       await _saveSubscriptionStatus();
-      
+
       // クラウドにも保存
       await _updateCloudSubscription();
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -294,7 +297,7 @@ class SubscriptionService extends ChangeNotifier {
       return false;
     }
   }
-  
+
   /// サブスクリプションを復元
   /// 実際のアプリでは課金APIと連携する必要あり
   Future<bool> restorePurchases() async {
@@ -303,10 +306,10 @@ class SubscriptionService extends ChangeNotifier {
       if (!_isInitialized) {
         await initialize();
       }
-      
+
       // 実際のアプリでは、ここで課金APIを呼び出す
       // 例: final purchases = await InAppPurchase.instance.queryPastPurchases();
-      
+
       // ログインしている場合はクラウドから同期
       if (_auth.currentUser != null) {
         await _syncWithCloud();
@@ -314,7 +317,7 @@ class SubscriptionService extends ChangeNotifier {
         // デモとして、ここでは前回の状態を復元する
         await _loadSubscriptionStatus();
       }
-      
+
       notifyListeners();
       return _isPremium; // 復元できたかどうかを返す
     } catch (e) {
@@ -322,27 +325,27 @@ class SubscriptionService extends ChangeNotifier {
       return false;
     }
   }
-  
+
   /// テスト用：プレミアム状態を切り替え
   Future<void> togglePremiumForTesting() async {
     // 初期化されていない場合は初期化
     if (!_isInitialized) {
       await initialize();
     }
-    
+
     _isPremium = !_isPremium;
-    
+
     if (_isPremium) {
       // サブスクリプションタイプを月額に設定
       _subscriptionType = SubscriptionType.monthly;
-      
+
       // 購入日を設定
       _purchaseDate = DateTime.now();
-      
+
       // 有効期限を1ヶ月後に設定
       final now = DateTime.now();
       _subscriptionExpiry = DateTime(now.year, now.month + 1, now.day);
-      
+
       // サブスクリプションIDを生成
       _subscriptionId = 'test_${DateTime.now().millisecondsSinceEpoch}';
     } else {
@@ -351,12 +354,12 @@ class SubscriptionService extends ChangeNotifier {
       _purchaseDate = null;
       _subscriptionType = SubscriptionType.none;
     }
-    
+
     await _saveSubscriptionStatus();
     await _updateCloudSubscription();
     notifyListeners();
   }
-  
+
   /// 特定の機能がプレミアム機能かどうかチェック
   bool isFeaturePremium(String featureId) {
     // プレミアム機能のリスト
@@ -368,27 +371,27 @@ class SubscriptionService extends ChangeNotifier {
       'custom_themes',
       'premium', // プレミアム全体を表す特別なID
     ];
-    
+
     return premiumFeatures.contains(featureId);
   }
-  
+
   /// 特定の機能を使用できるかどうかチェック
   Future<bool> canUseFeature(String featureId) async {
     // プレミアム機能でなければ、誰でも使用可能
     if (!isFeaturePremium(featureId)) {
       return true;
     }
-    
+
     // プレミアム機能の場合は、プレミアムユーザーのみ使用可能
     return await isPremiumUser();
   }
-  
+
   /// サブスクリプション情報の文字列表現
   String getSubscriptionInfoText() {
     if (!_isPremium) {
       return '無料プラン';
     }
-    
+
     String planType;
     switch (_subscriptionType) {
       case SubscriptionType.monthly:
@@ -400,15 +403,15 @@ class SubscriptionService extends ChangeNotifier {
       default:
         planType = 'プレミアムプラン';
     }
-    
+
     String expiryText = '';
     if (_subscriptionExpiry != null) {
       expiryText = '（${_subscriptionExpiry!.year}年${_subscriptionExpiry!.month}月${_subscriptionExpiry!.day}日まで）';
     }
-    
+
     return '$planType$expiryText';
   }
-  
+
   /// ユーザーが利用できる機能のリストを取得
   List<String> getAvailableFeatures() {
     final features = <String>[
@@ -419,7 +422,7 @@ class SubscriptionService extends ChangeNotifier {
       'search',          // 検索機能
       'export_text',     // テキスト書き出し
     ];
-    
+
     // プレミアムユーザーの場合は、プレミアム機能も追加
     if (_isPremium) {
       features.addAll([
@@ -430,10 +433,10 @@ class SubscriptionService extends ChangeNotifier {
         'custom_themes',
       ]);
     }
-    
+
     return features;
   }
-  
+
   /// プレミアム特典の説明文を取得
   List<String> getPremiumBenefits() {
     return [
@@ -445,7 +448,7 @@ class SubscriptionService extends ChangeNotifier {
       '広告表示なし',
     ];
   }
-  
+
   /// プランの価格情報を取得
   Map<String, dynamic> getPricingInfo() {
     return {

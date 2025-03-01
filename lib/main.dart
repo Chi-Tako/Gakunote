@@ -1,37 +1,54 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart';
 import 'firebase_options.dart';
 import 'app/app.dart';
 import 'app/providers.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'dart:io';
+import 'package:path_provider/path_provider.dart'
+    if (kIsWeb) 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Hive初期化（ローカルストレージ用）
-  final appDocumentDir = await getApplicationDocumentsDirectory();
-  await Hive.initFlutter(appDocumentDir.path);
-  
-  // Firebase初期化（オプション）
+
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    print('Firebaseの初期化に成功しました');
-  } catch (e) {
-    // Firebaseの初期化に失敗してもアプリは起動できるようにする
-    print('Firebaseの初期化に失敗しました: $e');
-    print('ローカルモードで起動します');
-  }
-  
-  try {
+    // Initialize Hive (local storage)
+    Directory appDocumentDir;
+    if (!kIsWeb) {
+      appDocumentDir = await getApplicationDocumentsDirectory();
+    } else {
+      appDocumentDir = Directory('./'); // Web用の代替パス
+    }
+    await Hive.initFlutter(appDocumentDir.path);
+
+    // Initialize Firebase (optional, with error handling)
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      print('Firebase initialization successful');
+    } catch (e) {
+      print('Firebase initialization failed: $e');
+      print('Running in local mode');
+    }
+
+    // Register Hive adapters
+    Hive.registerAdapter(NoteAdapter());
+
     runApp(const AppProviders(
       child: GakunoteApp(),
     ));
   } catch (e) {
-    print('アプリの実行中にエラーが発生しました: $e');
+    print('Application initialization error: $e');
+    // Display a minimal UI in case of initialization failure
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text('Application initialization error: $e'),
+        ),
+      ),
+    ));
   }
 }
