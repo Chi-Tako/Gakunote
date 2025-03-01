@@ -171,35 +171,51 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   // 変更があれば保存
   Future<void> _saveIfNeeded() async {
-    if (_hasChanges) {
+    if (_hasChanges && mounted) {
       await _saveChanges();
     }
   }
 
   // 変更内容を保存
   Future<void> _saveChanges() async {
+    if (!mounted) return; // マウントされていない場合は処理しない
+    
     setState(() {
       _isLoading = true;
     });
 
     try {
+      // タイトルの更新
       _note.title = _titleController.text;
-      for (int i = 0; i < _note.blocks.length; i++) {
+      
+      // ブロックの内容を更新
+      for (int i = 0; i < _note.blocks.length && i < _blockControllers.length; i++) {
         _note.blocks[i].content = _blockControllers[i].text;
       }
 
       final noteService = Provider.of<NoteService>(context, listen: false);
       await noteService.saveNote(_note);
 
-      setState(() {
-        _isLoading = false;
-        _hasChanges = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasChanges = false;
+        });
+        
+        // 保存成功メッセージ
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ノートを保存しました'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('ノートの保存中にエラーが発生しました: $e'),

@@ -38,7 +38,10 @@ class BlockOperationsService {
     // リスナー追加
     newFocusNode.addListener(() {
       if (newFocusNode.hasFocus) {
-        onFocusChanged(blockFocusNodes.indexOf(newFocusNode));
+        final index = blockFocusNodes.indexOf(newFocusNode);
+        if (index != -1) {  // インデックスが有効な場合のみ
+          onFocusChanged(index);
+        }
       }
     });
     
@@ -49,14 +52,20 @@ class BlockOperationsService {
     blockEditingStates[newBlock.id] = true;
     
     // 新しいブロックにフォーカスを移動
-    onFocusChanged(note.blocks.length - 1);
-    newFocusNode.requestFocus();
+    final newIndex = note.blocks.length - 1;
+    if (newIndex >= 0) {
+      onFocusChanged(newIndex);
+      // ウィジェットが構築された後にフォーカスを設定するため、少し遅延させる
+      Future.microtask(() => newFocusNode.requestFocus());
+    }
     
     onStateChanged();
   }
   
   /// 指定インデックスの後に新しいブロックを追加
   void addNewBlockAfter(int index) {
+    if (index < 0 || index >= note.blocks.length) return;  // 範囲チェックを追加
+    
     final newBlock = NoteBlock(
       type: BlockType.text,
       content: '',
@@ -75,7 +84,10 @@ class BlockOperationsService {
     // リスナー追加
     newFocusNode.addListener(() {
       if (newFocusNode.hasFocus) {
-        onFocusChanged(blockFocusNodes.indexOf(newFocusNode));
+        final focusIndex = blockFocusNodes.indexOf(newFocusNode);
+        if (focusIndex != -1) {  // インデックスが有効な場合のみ
+          onFocusChanged(focusIndex);
+        }
       }
     });
     
@@ -87,14 +99,15 @@ class BlockOperationsService {
     
     // 新しいブロックにフォーカスを移動
     onFocusChanged(index + 1);
-    newFocusNode.requestFocus();
+    // ウィジェットが構築された後にフォーカスを設定するため、少し遅延させる
+    Future.microtask(() => newFocusNode.requestFocus());
     
     onStateChanged();
   }
   
   /// ブロックを上に移動
   void moveBlockUp(int index) {
-    if (index <= 0) return;
+    if (index <= 0 || index >= note.blocks.length) return;  // 範囲チェックを追加
     
     note.reorderBlocks(index, index - 1);
     
@@ -106,14 +119,15 @@ class BlockOperationsService {
     
     // フォーカスを移動
     onFocusChanged(index - 1);
-    focusNode.requestFocus();
+    // ウィジェットが構築された後にフォーカスを設定するため、少し遅延させる
+    Future.microtask(() => focusNode.requestFocus());
     
     onStateChanged();
   }
   
   /// ブロックを下に移動
   void moveBlockDown(int index) {
-    if (index >= note.blocks.length - 1) return;
+    if (index < 0 || index >= note.blocks.length - 1) return;  // 範囲チェックを追加
     
     note.reorderBlocks(index, index + 1);
     
@@ -125,16 +139,20 @@ class BlockOperationsService {
     
     // フォーカスを移動
     onFocusChanged(index + 1);
-    focusNode.requestFocus();
+    // ウィジェットが構築された後にフォーカスを設定するため、少し遅延させる
+    Future.microtask(() => focusNode.requestFocus());
     
     onStateChanged();
   }
   
   /// ブロックを削除
   void deleteBlock(int index) {
+    if (index < 0 || index >= note.blocks.length) return;  // 範囲チェックを追加
+    
     final block = note.blocks[index];
     note.removeBlock(block.id);
     
+    // コントローラとフォーカスノードをリソース解放
     blockControllers.removeAt(index).dispose();
     blockFocusNodes.removeAt(index).dispose();
     blockEditingStates.remove(block.id);
@@ -142,11 +160,25 @@ class BlockOperationsService {
     // 削除後はフォーカスを外す
     onFocusChanged(-1);
     
+    // 削除後、可能であれば前または次のブロックにフォーカスを移動
+    if (note.blocks.isNotEmpty) {
+      final newIndex = index < note.blocks.length ? index : note.blocks.length - 1;
+      // 状態の更新後にフォーカスを設定するため、少し遅延させる
+      Future.microtask(() {
+        onFocusChanged(newIndex);
+        if (newIndex >= 0 && newIndex < blockFocusNodes.length) {
+          blockFocusNodes[newIndex].requestFocus();
+        }
+      });
+    }
+    
     onStateChanged();
   }
   
   /// 指定したシンボルをMathブロックに挿入
   void insertMathSymbol(int blockIndex, String symbol) {
+    if (blockIndex < 0 || blockIndex >= blockControllers.length) return;  // 範囲チェックを追加
+    
     final controller = blockControllers[blockIndex];
     final currentPosition = controller.selection.start;
     
@@ -164,7 +196,9 @@ class BlockOperationsService {
     }
     
     // ブロックの内容を更新
-    note.blocks[blockIndex].content = controller.text;
-    onStateChanged();
+    if (blockIndex < note.blocks.length) {
+      note.blocks[blockIndex].content = controller.text;
+      onStateChanged();
+    }
   }
 }

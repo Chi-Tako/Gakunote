@@ -23,11 +23,35 @@ class AuthService extends ChangeNotifier {
   
   // 認証状態の初期化と監視
   void initialize() {
-    // 認証状態の変化を監視
-    _firebase.auth.authStateChanges().listen((User? user) {
-      _currentUser = user;
+    _setLoading(true);
+    
+    try {
+      // 認証状態の変化を監視
+      _firebase.auth.authStateChanges().listen((User? user) {
+        _currentUser = user;
+        _setLoading(false);  // 認証状態が変わったらローディング解除
+        notifyListeners();
+      }, onError: (error) {
+        _setLoading(false);
+        _setError('認証状態の監視中にエラーが発生しました: $error');
+      });
+    } catch (e) {
+      _setLoading(false);
+      _setError('認証システムの初期化中にエラーが発生しました: $e');
+    }
+  }
+  
+  // アプリケーションの起動時に現在のログイン状態を確認
+  Future<void> checkCurrentAuthState() async {
+    _setLoading(true);
+    try {
+      _currentUser = _firebase.auth.currentUser;
+      _setLoading(false);
       notifyListeners();
-    });
+    } catch (e) {
+      _setLoading(false);
+      _setError('現在の認証状態の確認中にエラーが発生しました: $e');
+    }
   }
   
   // メールアドレス・パスワードでサインアップ
