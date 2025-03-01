@@ -1,9 +1,10 @@
 // lib/features/notes/presentation/pages/note_detail_page.dart
 import 'package:flutter/material.dart';
 import '../../../../core/models/note.dart';
+import '../services/block_operations.dart';
 import '../widgets/note_app_bar.dart';
 import '../widgets/block_editor.dart';
-import '../services/block_operations.dart';
+import '../widgets/block_renderers.dart';
 
 class NoteDetailPage extends StatefulWidget {
   final String noteId;
@@ -32,18 +33,38 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
 
   // ブロックの編集状態を追跡するマップ
   final Map<String, bool> _blockEditingStates = {};
+  
+  // ブロック操作サービス
+  late BlockOperationsService _blockOperations;
 
   @override
   void initState() {
     super.initState();
     // 実際のアプリではデータベースから取得
     // ここではダミーデータを使用
-    _note = BlockOperations.getDummyNote(widget.noteId);
+    _note = _getDummyNote(widget.noteId);
     _titleController = TextEditingController(text: _note.title);
+    
+    // ブロック操作サービスの初期化
+    _blockOperations = BlockOperationsService(
+      note: _note,
+      blockControllers: _blockControllers,
+      blockFocusNodes: _blockFocusNodes,
+      blockEditingStates: _blockEditingStates,
+      onFocusChanged: (index) {
+        setState(() {
+          _focusedBlockIndex = index;
+        });
+      },
+      onStateChanged: () {
+        setState(() {});
+      },
+    );
     
     // 各ブロックのコントローラーとフォーカスノードを初期化
     for (var block in _note.blocks) {
-      _blockControllers.add(TextEditingController(text: block.content));
+      final controller = TextEditingController(text: block.content);
+      _blockControllers.add(controller);
       
       // 先にFocusNodeを作成してから、リスナーを追加
       final newFocusNode = FocusNode();
@@ -51,10 +72,15 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
         if (newFocusNode.hasFocus) {
           setState(() {
             _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
+            // フォーカスされたら編集状態にする
+            _blockEditingStates[block.id] = true;
           });
         }
       });
       _blockFocusNodes.add(newFocusNode);
+      
+      // 初期状態では編集中ではない
+      _blockEditingStates[block.id] = false;
     }
     
     // タイトルにフォーカスがあたったときの処理
@@ -80,92 +106,143 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
     super.dispose();
   }
 
+  // ダミーノートの取得（実際のアプリではデータベースから取得）
+  Note _getDummyNote(String id) {
+    return Note(
+      id: id,
+      title: 'ノート $id',
+      blocks: [
+        NoteBlock(
+          type: BlockType.heading1,
+          content: 'ノート $id の見出し',
+        ),
+        NoteBlock(
+          type: BlockType.text,
+          content: 'これはサンプルテキストです。実際のアプリでは、このノートの内容はデータベースから取得されます。',
+        ),
+        NoteBlock(
+          type: BlockType.markdown,
+          content: '# Markdownの見出し\n\n- リスト項目1\n- リスト項目2\n\n**太字**と*斜体*のテキスト。',
+        ),
+      ],
+      tags: ['サンプル', 'テスト'],
+    );
+  }
+
+  void _saveChanges() {
+    _note.title = _titleController.text;
+    for (int i = 0; i < _note.blocks.length; i++) {
+      _note.blocks[i].content = _blockControllers[i].text;
+    }
+    // 実際のアプリではこの時点でデータベースに保存
+  }
+
+  void _toggleEditMode() {
+    setState(() {
+      if (_isEditing) {
+        // 編集内容を保存
+        _saveChanges();
+        // 全てのブロックの編集状態をリセット
+        for (var key in _blockEditingStates.keys) {
+          _blockEditingStates[key] = false;
+        }
+      }
+      _isEditing = !_isEditing;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: NoteAppBar(
+        title: _note.title,
         isEditing: _isEditing,
         titleController: _titleController,
-        noteTitle: _note.title,
         titleFocusNode: _titleFocusNode,
-        onEditPressed: () {
-          setState(() {
-            _isEditing = !_isEditing;
-          });
-        },
-        onMoreVertPressed: () {
-          // _showOptions(context);
+        onEditToggle: _toggleEditMode,
+        onOptionsPressed: () {
+          // オプションメニューを表示（後で実装）
         },
       ),
-      body: BlockEditor(
-        note: _note,
-        blockControllers: _blockControllers,
-        blockFocusNodes: _blockFocusNodes,
-        focusedBlockIndex: _focusedBlockIndex,
-        onBlockFocused: (index) {
-          setState(() {
-            _focusedBlockIndex = index;
-          });
-        },
-        onReorderBlock: (oldIndex, newIndex) {
-          setState(() {
-            final controller = _blockControllers.removeAt(oldIndex);
-            _blockControllers.insert(newIndex, controller);
-            final focusNode = _blockFocusNodes.removeAt(oldIndex);
-            _blockFocusNodes.insert(newIndex, focusNode);
-            _focusedBlockIndex = newIndex;
-            focusNode.requestFocus();
-          });
-        },
-        onRemoveBlock: (blockId) {
-          setState(() {
-            _note.removeBlock(blockId);
-            _blockControllers.removeAt(_note.blocks.indexWhere((block) => block.id == blockId));
-            _blockFocusNodes.removeAt(_note.blocks.indexWhere((block) => block.id == blockId)).dispose();
-          });
-        },
-        onAddNewBlockAfter: (index) {
-          setState(() {
-            final newBlock = NoteBlock(
-              type: BlockType.text,
-              content: '',
-            );
-            _note.blocks.insert(index + 1, newBlock);
+      body: _buildNoteContent(),
+      floatingActionButton: _isEditing 
+        ? FloatingActionButton(
+            mini: true,
+            onPressed: () => _blockOperations.addNewBlock(),
+            child: const Icon(Icons.add),
+          ) 
+        : null,
+    );
+  }
 
-            final controller = TextEditingController();
-            _blockControllers.insert(index + 1, controller);
-
-            final newFocusNode = FocusNode();
-            newFocusNode.addListener(() {
-              if (newFocusNode.hasFocus) {
+  Widget _buildNoteContent() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: _note.blocks.length,
+      itemBuilder: (context, index) {
+        final block = _note.blocks[index];
+        final bool isBlockFocused = _isEditing && _focusedBlockIndex == index;
+        final bool isBlockEditing = _blockEditingStates[block.id] ?? false;
+        
+        // 表示モードまたはフォーカスされていないブロック
+        if (!_isEditing || !isBlockFocused || !isBlockEditing) {
+          return InkWell(
+            onTap: () {
+              if (!_isEditing) {
                 setState(() {
-                  _focusedBlockIndex = _blockFocusNodes.indexOf(newFocusNode);
+                  _isEditing = true;
                 });
               }
+              // フォーカスを当該ブロックに移動
+              _blockFocusNodes[index].requestFocus();
+              setState(() {
+                _blockEditingStates[block.id] = true;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: renderBlockContent(context, block),
+            ),
+          );
+        }
+        
+        // 編集モードでフォーカスされていて編集中のブロック
+        return BlockEditor(
+          block: block,
+          index: index,
+          blockControllers: _blockControllers,
+          blockFocusNodes: _blockFocusNodes,
+          onTypeChanged: (newType) {
+            setState(() {
+              block.type = newType;
             });
-            _blockFocusNodes.insert(index + 1, newFocusNode);
-            _focusedBlockIndex = index + 1;
-            newFocusNode.requestFocus();
-          });
-        },
-        blockEditingStates: _blockEditingStates,
-        onBlockContentChanged: (blockId, content) {
-          setState(() {
-            _note.blocks.firstWhere((block) => block.id == blockId).content = content;
-          });
-        },
-        onBlockTypeChanged: (blockId, blockType) {
-          setState(() {
-            _note.blocks.firstWhere((block) => block.id == blockId).type = blockType;
-          });
-        },
-      ),
-      floatingActionButton: _isEditing ? FloatingActionButton(
-        mini: true,
-        onPressed: () {
-        },
-        child: const Icon(Icons.add),
-      ) : null,
+          },
+          onConfirm: () {
+            setState(() {
+              // ブロックの内容を保存
+              block.content = _blockControllers[index].text;
+              // 編集状態を解除
+              _blockEditingStates[block.id] = false;
+            });
+          },
+          onMoveUp: index > 0
+            ? () {
+                _blockOperations.moveBlockUp(index);
+              }
+            : null,
+          onMoveDown: index < _note.blocks.length - 1
+            ? () {
+                _blockOperations.moveBlockDown(index);
+              }
+            : null,
+          onDelete: () {
+            _blockOperations.deleteBlock(index);
+          },
+          onAddAfter: () {
+            _blockOperations.addNewBlockAfter(index);
+          },
+        );
+      },
     );
   }
 }

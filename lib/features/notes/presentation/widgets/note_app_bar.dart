@@ -1,21 +1,23 @@
+// lib/features/notes/presentation/widgets/note_app_bar.dart
 import 'package:flutter/material.dart';
 
+/// ノート詳細画面のAppBar
 class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
   final bool isEditing;
   final TextEditingController titleController;
-  final String noteTitle;
   final FocusNode titleFocusNode;
-  final VoidCallback onEditPressed;
-  final VoidCallback onMoreVertPressed;
+  final VoidCallback onEditToggle;
+  final VoidCallback onOptionsPressed;
 
   const NoteAppBar({
     Key? key,
+    required this.title,
     required this.isEditing,
     required this.titleController,
-    required this.noteTitle,
     required this.titleFocusNode,
-    required this.onEditPressed,
-    required this.onMoreVertPressed,
+    required this.onEditToggle,
+    required this.onOptionsPressed,
   }) : super(key: key);
 
   @override
@@ -35,20 +37,20 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
                 hintStyle: TextStyle(color: Colors.white70),
               ),
             )
-          : Text(noteTitle),
+          : Text(title),
       actions: [
         IconButton(
           icon: Icon(isEditing ? Icons.check : Icons.edit),
-          onPressed: onEditPressed,
+          onPressed: onEditToggle,
         ),
         IconButton(
           icon: const Icon(Icons.more_vert),
-          onPressed: onMoreVertPressed,
+          onPressed: onOptionsPressed,
         ),
       ],
     );
   }
-  
+
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
