@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "352580638198",
+    "project_id": "gakunote-fcb98",
+    "storage_bucket": "gakunote-fcb98.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:352580638198:android:297c9597b4114eccd9a3d7",
+        "android_client_info": {
+          "package_name": "com.example.gakunote"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAR9TqB06o_rPgQh0N8MV-THM5qLMjL5gs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

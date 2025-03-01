@@ -1,7 +1,10 @@
 // lib/features/notes/presentation/pages/notes_page.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/models/note.dart';
+import '../../../../core/services/note_service.dart';
+import '../../../../core/services/auth_service.dart';
 import '../widgets/note_card.dart';
 import '../../../shared/widgets/app_drawer.dart';
 
@@ -13,76 +16,34 @@ class NotesPage extends StatefulWidget {
 }
 
 class _NotesPageState extends State<NotesPage> {
-  // ダミーデータの作成（後で実際のデータソースに置き換える）
-  final List<Note> _notes = [
-    Note(
-      id: '1',
-      title: '物理学の基本概念',
-      blocks: [
-        NoteBlock(
-          type: BlockType.heading1,
-          content: '物理学の基本概念',
-        ),
-        NoteBlock(
-          type: BlockType.text,
-          content: 'ニュートン力学の基本法則と応用例について',
-        ),
-      ],
-      tags: ['物理', '学習'],
-      createdAt: DateTime.now().subtract(const Duration(days: 5)),
-    ),
-    Note(
-      id: '2',
-      title: '週間タスク計画',
-      blocks: [
-        NoteBlock(
-          type: BlockType.heading1,
-          content: '週間タスク計画',
-        ),
-        NoteBlock(
-          type: BlockType.text,
-          content: '今週の優先タスクと締め切り',
-        ),
-      ],
-      tags: ['タスク', '計画'],
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      isFavorite: true,
-    ),
-    Note(
-      id: '3',
-      title: 'プログラミング学習ノート',
-      blocks: [
-        NoteBlock(
-          type: BlockType.heading1,
-          content: 'プログラミング学習ノート',
-        ),
-        NoteBlock(
-          type: BlockType.text,
-          content: 'Dartの基本文法とFlutterウィジェットの使い方',
-        ),
-      ],
-      tags: ['プログラミング', 'Flutter'],
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-  ];
-
   // 検索クエリ
   String _searchQuery = '';
 
-  // フィルタリングされたノートのリスト
-  List<Note> get _filteredNotes {
-    if (_searchQuery.isEmpty) {
-      return _notes;
-    }
-    return _notes.where((note) {
-      final titleMatches = note.title.toLowerCase().contains(_searchQuery.toLowerCase());
-      final tagMatches = note.tags.any((tag) => tag.toLowerCase().contains(_searchQuery.toLowerCase()));
-      return titleMatches || tagMatches;
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    
+    // NoteServiceに自動的にロードするようにProviderで設定したので、
+    // ここでの明示的なロード処理は不要になりました
   }
 
   @override
   Widget build(BuildContext context) {
+    final noteService = Provider.of<NoteService>(context);
+    final authService = Provider.of<AuthService>(context);
+    
+    // サービスから取得したノート一覧
+    final notes = noteService.notes;
+    
+    // フィルタリングされたノートのリスト
+    List<Note> filteredNotes = _searchQuery.isEmpty
+        ? notes
+        : notes.where((note) {
+            final titleMatches = note.title.toLowerCase().contains(_searchQuery.toLowerCase());
+            final tagMatches = note.tags.any((tag) => tag.toLowerCase().contains(_searchQuery.toLowerCase()));
+            return titleMatches || tagMatches;
+          }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gakunote'),
@@ -92,7 +53,7 @@ class _NotesPageState extends State<NotesPage> {
             onPressed: () {
               showSearch(
                 context: context,
-                delegate: NoteSearchDelegate(_notes),
+                delegate: NoteSearchDelegate(notes),
               );
             },
           ),
@@ -102,28 +63,40 @@ class _NotesPageState extends State<NotesPage> {
               _showSortOptions(context);
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // メニューオプションを表示
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'logout') {
+                _showLogoutDialog(context);
+              }
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'settings',
+                child: Text('設定'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Text('ログアウト'),
+              ),
+            ],
           ),
         ],
       ),
       drawer: const AppDrawer(),
-      body: _buildNotesList(),
+      body: noteService.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildNotesList(filteredNotes),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // 新規ノート作成画面に遷移
-          _createNewNote();
+          _createNewNote(context);
         },
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget _buildNotesList() {
-    if (_filteredNotes.isEmpty) {
+  Widget _buildNotesList(List<Note> notes) {
+    if (notes.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -143,7 +116,7 @@ class _NotesPageState extends State<NotesPage> {
             ),
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: _createNewNote,
+              onPressed: () => _createNewNote(context),
               child: const Text('ノートを作成'),
             ),
           ],
@@ -159,9 +132,9 @@ class _NotesPageState extends State<NotesPage> {
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
-      itemCount: _filteredNotes.length,
+      itemCount: notes.length,
       itemBuilder: (context, index) {
-        final note = _filteredNotes[index];
+        final note = notes[index];
         return NoteCard(
           note: note,
           onTap: () {
@@ -169,9 +142,9 @@ class _NotesPageState extends State<NotesPage> {
             context.go('/notes/${note.id}');
           },
           onFavoriteToggle: () {
-            setState(() {
-              note.isFavorite = !note.isFavorite;
-            });
+            // お気に入り状態を切り替え
+            final noteService = Provider.of<NoteService>(context, listen: false);
+            noteService.toggleFavorite(note.id);
           },
         );
       },
@@ -179,18 +152,30 @@ class _NotesPageState extends State<NotesPage> {
   }
 
   void _showSortOptions(BuildContext context) {
+    final noteService = Provider.of<NoteService>(context, listen: false);
+    
     showModalBottomSheet(
       context: context,
       builder: (context) {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                '並び替え',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.access_time),
               title: const Text('最終更新日'),
               onTap: () {
                 setState(() {
-                  _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+                  // 最新順に並び替え（NoteServiceで既に実装されているはず）
                 });
                 Navigator.pop(context);
               },
@@ -200,7 +185,8 @@ class _NotesPageState extends State<NotesPage> {
               title: const Text('タイトル'),
               onTap: () {
                 setState(() {
-                  _notes.sort((a, b) => a.title.compareTo(b.title));
+                  // タイトル順に並び替え（こちらはローカルでのみ行う）
+                  noteService.notes.sort((a, b) => a.title.compareTo(b.title));
                 });
                 Navigator.pop(context);
               },
@@ -210,7 +196,8 @@ class _NotesPageState extends State<NotesPage> {
               title: const Text('お気に入り'),
               onTap: () {
                 setState(() {
-                  _notes.sort((a, b) => b.isFavorite ? 1 : -1);
+                  // お気に入り順に並び替え（こちらはローカルでのみ行う）
+                  noteService.notes.sort((a, b) => b.isFavorite ? 1 : -1);
                 });
                 Navigator.pop(context);
               },
@@ -221,24 +208,40 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  void _createNewNote() {
-    final newNote = Note(
-      title: '新規ノート',
-      blocks: [
-        NoteBlock(
-          type: BlockType.heading1,
-          content: '新規ノート',
-        ),
-        NoteBlock(
-          type: BlockType.text,
-          content: '',
-        ),
-      ],
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('ログアウト'),
+          content: const Text('本当にログアウトしますか？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                final authService = Provider.of<AuthService>(context, listen: false);
+                authService.signOut();
+              },
+              child: const Text('ログアウト'),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  void _createNewNote(BuildContext context) {
+    final noteService = Provider.of<NoteService>(context, listen: false);
     
-    setState(() {
-      _notes.add(newNote);
-    });
+    // 新規ノートを作成
+    final newNote = noteService.createNewNote();
+    
+    // 保存
+    noteService.saveNote(newNote);
     
     // 新しいノートの詳細画面に移動
     context.go('/notes/${newNote.id}');
