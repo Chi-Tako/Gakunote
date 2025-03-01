@@ -1,7 +1,6 @@
 // lib/features/notes/presentation/widgets/block_editor.dart
 import 'package:flutter/material.dart';
 import '../../../../core/models/note.dart';
-import 'block_renderers.dart';
 import 'math_block_editor.dart';
 import 'code_block_editor.dart';
 
@@ -19,7 +18,7 @@ class BlockEditor extends StatelessWidget {
   final VoidCallback onAddAfter;
 
   const BlockEditor({
-    Key? key,
+    super.key,
     required this.block,
     required this.index,
     required this.blockControllers,
@@ -30,14 +29,14 @@ class BlockEditor extends StatelessWidget {
     this.onMoveDown,
     required this.onDelete,
     required this.onAddAfter,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
@@ -55,7 +54,7 @@ class BlockEditor extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
       ),
       child: Row(
@@ -198,5 +197,53 @@ class BlockEditor extends StatelessWidget {
     
     // ブロックの内容を更新
     block.content = controller.text;
+  }
+
+  String getBlockTypeName(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return '見出し';
+      case BlockType.text:
+        return '段落';
+      case BlockType.list:
+        return '箇条書き';
+      case BlockType.list:
+        return '番号付きリスト';
+      case BlockType.code:
+        return 'コード';
+      case BlockType.text:
+        return '引用';
+      case BlockType.math:
+        return '数式';
+      default:
+        return '不明';
+    }
+  }
+
+  TextStyle getTextStyleForBlockType(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return const TextStyle(fontSize: 24, fontWeight: FontWeight.bold);
+      default:
+        return const TextStyle(fontSize: 16);
+    }
+  }
+
+  String getBlockHint(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return '見出しを入力';
+      default:
+        return 'テキストを入力';
+    }
+  }
+
+  double getFontSizeForBlockType(BlockType type) {
+    switch (type) {
+      case BlockType.heading1:
+        return 24;
+      default:
+        return 16;
+    }
   }
 }

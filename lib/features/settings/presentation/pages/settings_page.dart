@@ -1,5 +1,6 @@
 // lib/features/settings/presentation/pages/settings_page.dart
 import 'package:flutter/material.dart';
+import 'package:gakunote/core/services/subscription_service.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/services/app_settings_service.dart';
 import '../../../../core/services/auth_service.dart';
@@ -8,7 +9,7 @@ import '../../../../core/services/subscription_service.dart';
 import '../../../shared/widgets/premium_feature_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({Key? key}) : super(key: key);
+  const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {

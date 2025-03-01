@@ -1,11 +1,12 @@
 // lib/features/shared/widgets/app_drawer.dart
 import 'package:flutter/material.dart';
+import 'package:gakunote/core/services/subscription_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/subscription_service.dart';
 
 class AppDrawer extends StatelessWidget {
-  const AppDrawer({Key? key}) : super(key: key);
+  const AppDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {

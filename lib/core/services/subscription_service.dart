@@ -14,19 +14,6 @@ class SubscriptionService extends ChangeNotifier {
   static const String _purchaseDateKey = 'purchaseDate';
   static const String _subscriptionTypeKey = 'subscriptionType';
   
-  // サブスクリプションの種類
-  enum SubscriptionTier {
-    free,     // 無料プラン
-    premium,  // プレミアムプラン
-  }
-  
-  // サブスクリプションタイプ
-  enum SubscriptionType {
-    none,     // 未契約
-    monthly,  // 月額
-    yearly,   // 年額
-  }
-  
   // フィールド
   bool _isPremium = false;
   DateTime? _subscriptionExpiry;
@@ -64,7 +51,7 @@ class SubscriptionService extends ChangeNotifier {
       
       _isInitialized = true;
     } catch (e) {
-      print('SubscriptionServiceの初期化に失敗しました: $e');
+      debugPrint('SubscriptionServiceの初期化に失敗しました: $e');
     }
   }
   
@@ -114,7 +101,7 @@ class SubscriptionService extends ChangeNotifier {
       
       notifyListeners();
     } catch (e) {
-      print('サブスクリプション状態の読み込みに失敗しました: $e');
+      debugPrint('サブスクリプション状態の読み込みに失敗しました: $e');
     }
   }
   
@@ -169,7 +156,7 @@ class SubscriptionService extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print('クラウドとの同期に失敗しました: $e');
+      debugPrint('クラウドとの同期に失敗しました: $e');
     }
   }
   
@@ -193,7 +180,7 @@ class SubscriptionService extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('クラウドの更新に失敗しました: $e');
+      debugPrint('クラウドの更新に失敗しました: $e');
     }
   }
   
@@ -270,7 +257,7 @@ class SubscriptionService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      print('購入処理エラー: $e');
+      debugPrint('購入処理エラー: $e');
       return false;
     }
   }
@@ -303,7 +290,7 @@ class SubscriptionService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      print('サブスクリプションキャンセルエラー: $e');
+      debugPrint('サブスクリプションキャンセルエラー: $e');
       return false;
     }
   }
@@ -331,7 +318,7 @@ class SubscriptionService extends ChangeNotifier {
       notifyListeners();
       return _isPremium; // 復元できたかどうかを返す
     } catch (e) {
-      print('購入復元エラー: $e');
+      debugPrint('購入復元エラー: $e');
       return false;
     }
   }
@@ -478,4 +465,17 @@ class SubscriptionService extends ChangeNotifier {
       },
     };
   }
+}
+
+// サブスクリプションの種類
+enum SubscriptionTier {
+  free,     // 無料プラン
+  premium,  // プレミアムプラン
+}
+
+// サブスクリプションタイプ
+enum SubscriptionType {
+  none,     // 未契約
+  monthly,  // 月額
+  yearly,   // 年額
 }
