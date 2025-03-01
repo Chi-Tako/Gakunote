@@ -15,7 +15,7 @@ GoRouter createAppRouter(BuildContext context) {
 
   return GoRouter(
     initialLocation: '/notes',
-    redirect: authGuard.protectedRouteGuard,
+    redirect: (context, state) => authGuard.protectedRouteGuard(state),
     routes: [
       // ノート一覧画面
       GoRoute(
