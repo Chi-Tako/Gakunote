@@ -32,6 +32,10 @@ dependencies:
 
   shared_preferences: ^2.0.0
 
+  pdf: ^3.10.4
+  flutter_image_compress: ^2.0.0
+  screenshot: ^2.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
