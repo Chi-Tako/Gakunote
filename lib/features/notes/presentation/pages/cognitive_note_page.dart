@@ -1,4 +1,3 @@
-// lib/features/notes/presentation/pages/cognitive_note_page.dart
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
@@ -359,603 +358,7 @@ class _CognitiveNotePageState extends State<CognitiveNotePage> {
           ),
         ],
       ),
-      body: _note == null
-          ? const Center(child: Text('ノートが見つかりません'))
-          : Row(
-              children: [
-                // メインコンテンツエリア
-                Expanded(
-                  flex: 3,
-                  child: _buildNoteContent(),
-                ),
-                
-                // 思考マップパネル（条件付き表示）
-                if (_showThoughtMap)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                        ),
-                      ),
-                      child: _buildThoughtMapPanel(),
-                    ),
-                  ),
-              ],
-            ),
-      // 予測パネル（条件付き表示）
-      bottomSheet: _showPredictions && _currentPredictions.isNotEmpty
-          ? _buildPredictionPanel()
-          : null,
-      // 新規ブロック追加ボタン
-      floatingActionButton: _isEditing
-          ? FloatingActionButton(
-              onPressed: () => _addNewBlock(),
-              tooltip: 'ブロックを追加',
-              child: const Icon(Icons.add),
-            )
-          : null,
     );
-  }
-
-  // ノートコンテンツビルダー
-  Widget _buildNoteContent() {
-    if (_note == null || _note!.blocks.isEmpty) {
-      return Center(
-        child: _isEditing
-            ? const Text('新規ブロックを追加してください')
-            : const Text('このノートにはまだ内容がありません'),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // タグ一覧
-        if (_note!.tags.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _note!.tags.map((tag) => Chip(
-              label: Text(tag),
-              onDeleted: _isEditing
-                  ? () {
-                      setState(() {
-                        _note!.tags.remove(tag);
-                      });
-                      _saveNote();
-                    }
-                  : null,
-            )).toList(),
-          ),
-          const SizedBox(height: 16),
-        ],
-        
-        // ブロック一覧
-        ...List.generate(_note!.blocks.length, (index) {
-          final block = _note!.blocks[index];
-          
-          if (_isEditing && index == _selectedBlockIndex) {
-            // 編集モードで選択されているブロック
-            return _buildBlockEditor(index);
-          } else {
-            // 表示モード、または選択されていないブロック
-            return CognitiveBlockRenderer(
-              block: block,
-              isSelected: index == _selectedBlockIndex,
-              showRelations: true,
-              onTap: (block) {
-                setState(() {
-                  _selectedBlockIndex = index;
-                });
-                
-                if (_isEditing) {
-                  // フォーカスを設定
-                  _blockFocusNodes[index].requestFocus();
-                }
-                
-                _updatePredictions(index);
-              },
-              onLongPress: _isEditing
-                  ? (block) {
-                      _showBlockOptionsMenu(context, index);
-                    }
-                  : null,
-            );
-          }
-        }),
-      ],
-    );
-  }
-
-  // ブロックエディタービルダー
-  Widget _buildBlockEditor(int index) {
-    final block = _note!.blocks[index];
-    
-    // 実際の実装では、ブロックタイプに応じた適切なエディタを表示
-    // ここでは簡略化のため、基本的なテキストエディタを表示
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ブロックタイプ選択
-            Row(
-              children: [
-                DropdownButton<BlockType>(
-                  value: block.type,
-                  onChanged: (BlockType? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        block.type = newValue;
-                      });
-                    }
-                  },
-                  items: BlockType.values.map((BlockType type) {
-                    return DropdownMenuItem<BlockType>(
-                      value: type,
-                      child: Text(_getBlockTypeName(type)),
-                    );
-                  }).toList(),
-                ),
-                const Spacer(),
-                // ブロック操作ボタン
-                IconButton(
-                  icon: const Icon(Icons.arrow_upward, size: 20),
-                  onPressed: index > 0
-                      ? () {
-                          // ブロックを上に移動
-                          setState(() {
-                            _note!.reorderBlocks(index, index - 1);
-                            
-                            // コントローラとフォーカスノードも移動
-                            final tempController = _blockControllers.removeAt(index);
-                            _blockControllers.insert(index - 1, tempController);
-                            
-                            final tempFocusNode = _blockFocusNodes.removeAt(index);
-                            _blockFocusNodes.insert(index - 1, tempFocusNode);
-                            
-                            _selectedBlockIndex = index - 1;
-                          });
-                        }
-                      : null,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.arrow_downward, size: 20),
-                  onPressed: index < _note!.blocks.length - 1
-                      ? () {
-                          // ブロックを下に移動
-                          setState(() {
-                            _note!.reorderBlocks(index, index + 1);
-                            
-                            // コントローラとフォーカスノードも移動
-                            final tempController = _blockControllers.removeAt(index);
-                            _blockControllers.insert(index + 1, tempController);
-                            
-                            final tempFocusNode = _blockFocusNodes.removeAt(index);
-                            _blockFocusNodes.insert(index + 1, tempFocusNode);
-                            
-                            _selectedBlockIndex = index + 1;
-                          });
-                        }
-                      : null,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, size: 20),
-                  onPressed: () => _deleteBlock(index),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // ブロックコンテンツエディタ
-            TextField(
-              controller: _blockControllers[index],
-              focusNode: _blockFocusNodes[index],
-              maxLines: null,
-              decoration: InputDecoration(
-                hintText: _getBlockHint(block.type),
-                border: InputBorder.none,
-              ),
-              onChanged: (value) {
-                // リアルタイムで内容を更新
-                setState(() {
-                  block.content = value;
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ブロックオプションメニュー
-  void _showBlockOptionsMenu(BuildContext context, int index) {
-    final block = _note!.blocks[index];
-    
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.content_copy),
-            title: const Text('ブロックを複製'),
-            onTap: () {
-              Navigator.pop(context);
-              
-              setState(() {
-                // ブロックを複製
-                final newBlock = NoteBlock(
-                  type: block.type,
-                  content: block.content,
-                  metadata: Map.from(block.metadata),
-                );
-                
-                _note!.blocks.insert(index + 1, newBlock);
-                
-                // コントローラとフォーカスノードを追加
-                final controller = TextEditingController(text: block.content);
-                _blockControllers.insert(index + 1, controller);
-                
-                final focusNode = FocusNode();
-                _blockFocusNodes.insert(index + 1, focusNode);
-                
-                _selectedBlockIndex = index + 1;
-              });
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete),
-            title: const Text('ブロックを削除'),
-            onTap: () {
-              Navigator.pop(context);
-              _deleteBlock(index);
-            },
-          ),
-          if (_note is CognitiveNote) ...[
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.psychology),
-              title: const Text('ブロックを概念として扱う'),
-              onTap: () {
-                Navigator.pop(context);
-                
-                // ブロックを概念としてマーク
-                if (block is CognitiveBlock) {
-                  setState(() {
-                    block.cognitiveMetadata['blockType'] = 'concept';
-                    block.initConceptMetadata();
-                  });
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.connect_without_contact),
-              title: const Text('他のブロックと関連付け'),
-              onTap: () {
-                Navigator.pop(context);
-                _showRelationDialog(index);
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ブロック関連付けダイアログ
-  void _showRelationDialog(int sourceIndex) {
-    if (_note == null || !(_note is CognitiveNote)) return;
-    
-    final cognitiveNote = _note as CognitiveNote;
-    final sourceBlock = cognitiveNote.blocks[sourceIndex];
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('ブロックを関連付け'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: cognitiveNote.blocks.length,
-            itemBuilder: (context, index) {
-              if (index == sourceIndex) return const SizedBox.shrink();
-              
-              final targetBlock = cognitiveNote.blocks[index];
-              
-              return ListTile(
-                title: Text(
-                  targetBlock.content.isNotEmpty
-                      ? (targetBlock.content.length > 30
-                          ? '${targetBlock.content.substring(0, 30)}...'
-                          : targetBlock.content)
-                      : 'ブロック ${index + 1}',
-                ),
-                subtitle: Text(_getBlockTypeName(targetBlock.type)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showRelationTypeDialog(sourceBlock.id, targetBlock.id);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 関連タイプ選択ダイアログ
-  void _showRelationTypeDialog(String sourceBlockId, String targetBlockId) {
-    if (_note == null || !(_note is CognitiveNote)) return;
-    
-    final cognitiveNote = _note as CognitiveNote;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('関連タイプを選択'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: BlockRelationType.values.map((type) => ListTile(
-            title: Text(_getRelationTypeName(type)),
-            onTap: () {
-              Navigator.pop(context);
-              
-              setState(() {
-                cognitiveNote.addRelation(
-                  sourceBlockId,
-                  targetBlockId,
-                  type,
-                );
-              });
-              
-              _saveNote();
-            },
-          )).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 思考マップパネル
-  Widget _buildThoughtMapPanel() {
-    if (_note == null || !(_note is CognitiveNote)) {
-      return const Center(
-        child: Text('思考マップは通常のノートでは利用できません'),
-      );
-    }
-    
-    final cognitiveNote = _note as CognitiveNote;
-    final conceptMap = cognitiveNote.generateConceptMap();
-    
-    return Column(
-      children: [
-        AppBar(
-          automaticallyImplyLeading: false,
-          title: const Text('思考マップ'),
-          centerTitle: true,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () {
-                setState(() {
-                  _showThoughtMap = false;
-                });
-              },
-            ),
-          ],
-        ),
-        Expanded(
-          child: ThoughtMapNavigator(
-            note: cognitiveNote,
-            conceptMap: conceptMap,
-            onNodeTap: (String blockId) {
-              // ブロックIDに対応するブロックのインデックスを検索
-              final index = cognitiveNote.blocks.indexWhere((b) => b.id == blockId);
-              if (index != -1) {
-                setState(() {
-                  _selectedBlockIndex = index;
-                });
-                
-                // スクロール位置を調整（実際の実装ではScrollControllerを使用）
-              }
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // 予測パネル
-  Widget _buildPredictionPanel() {
-    return Container(
-      height: 140,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                const Icon(Icons.lightbulb, size: 16, color: Colors.amber),
-                const SizedBox(width: 8),
-                const Text(
-                  '予測と提案',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 16),
-                  onPressed: () {
-                    setState(() {
-                      _showPredictions = false;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.all(8),
-              itemCount: _currentPredictions.length,
-              itemBuilder: (context, index) {
-                final prediction = _currentPredictions[index];
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: PredictionSuggestionCard(
-                    prediction: prediction,
-                    onTap: () => _applyPrediction(prediction),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ブロックタイプの名前を取得
-  String _getBlockTypeName(BlockType type) {
-    switch (type) {
-      case BlockType.text:
-        return 'テキスト';
-      case BlockType.heading1:
-        return '見出し 1';
-      case BlockType.heading2:
-        return '見出し 2';
-      case BlockType.heading3:
-        return '見出し 3';
-      case BlockType.markdown:
-        return 'Markdown';
-      case BlockType.code:
-        return 'コード';
-      case BlockType.image:
-        return '画像';
-      case BlockType.math:
-        return '数式';
-      default:
-        return type.toString().split('.').last;
-    }
-  }
-
-  // ブロックタイプに応じたヒントを取得
-  String _getBlockHint(BlockType type) {
-    switch (type) {
-      case BlockType.text:
-        return 'テキストを入力...';
-      case BlockType.heading1:
-      case BlockType.heading2:
-      case BlockType.heading3:
-        return '見出しを入力...';
-      case BlockType.markdown:
-        return 'Markdownを入力...';
-      case BlockType.code:
-        return 'コードを入力...';
-      case BlockType.image:
-        return '画像URLを入力...';
-      case BlockType.math:
-        return 'LaTeX形式で数式を入力...';
-      default:
-        return '内容を入力...';
-    }
-  }
-
-  // 関連タイプの名前を取得
-  String _getRelationTypeName(BlockRelationType type) {
-    switch (type) {
-      case BlockRelationType.reference:
-        return '参照する';
-      case BlockRelationType.explains:
-        return '説明する';
-      case BlockRelationType.examples:
-        return '例示する';
-      case BlockRelationType.depends:
-        return '依存する';
-      case BlockRelationType.contrasts:
-        return '対比する';
-      case BlockRelationType.sequence:
-        return '順序関係';
-      default:
-        return type.toString().split('.').last;
-    }
-  }
-
-  // アクションの実行
-  void _executeAction(Prediction prediction) {
-    // 予測のタイトルに基づいてアクションを実行
-    switch (prediction.title) {
-      case '基本構造を作成':
-        _addNewBlock(type: BlockType.heading1);
-        break;
-        
-      case '見出しを追加':
-        _addNewBlock(type: BlockType.heading1);
-        break;
-        
-      case 'キーポイントをタグ付け':
-        _showAddTagDialog();
-        break;
-        
-      case 'ノートを要約':
-        _showSummaryDialog();
-        break;
-        
-      case 'グラフを追加':
-        // グラフ追加用のブロックを追加
-        _addNewBlock(
-          type: BlockType.image,
-          metadata: {'blockType': 'graph'},
-        );
-        break;
-        
-      default:
-        // 不明なアクション
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('アクション「${prediction.title}」はまだ実装されていません'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-    }
   }
 
   // リソースダイアログ
@@ -1333,3 +736,389 @@ class _CognitiveNotePageState extends State<CognitiveNotePage> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  // ボディビルダー
+  Widget _buildBody() {
+    return Row(
+      children: [
+        // メインコンテンツエリア
+        Expanded(
+          flex: 3,
+          child: _buildNoteContent(),
+        ),
+        
+        // 思考マップパネル（条件付き表示）
+        if (_showThoughtMap)
+          Expanded(
+            flex: 2,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    color: Theme.of(context).dividerColor,
+                  ),
+                ),
+              child: _buildThoughtMapPanel(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ノートコンテンツビルダー
+  Widget _buildNoteContent() {
+    if (_note == null || _note!.blocks.isEmpty) {
+      return Center(
+        child: _isEditing
+            ? const Text('新規ブロックを追加してください')
+            : const Text('このノートにはまだ内容がありません'),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // タグ一覧
+        if (_note!.tags.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _note!.tags.map((tag) => Chip(
+              label: Text(tag),
+              onDeleted: _isEditing
+                  ? () {
+                      setState(() {
+                        _note!.tags.remove(tag);
+                      });
+                      _saveNote();
+                    }
+                  : null,
+            )).toList(),
+          ),
+          const SizedBox(height: 16),
+        ],
+        
+        // ブロック一覧
+        ...List.generate(_note!.blocks.length, (index) {
+          final block = _note!.blocks[index];
+          
+          if (_isEditing && index == _selectedBlockIndex) {
+            // 編集モードで選択されているブロック
+            return _buildBlockEditor(index);
+          } else {
+            // 表示モード、または選択されていないブロック
+            return CognitiveBlockRenderer(
+              block: block,
+              isSelected: index == _selectedBlockIndex,
+              showRelations: true,
+              onTap: (block) {
+                setState(() {
+                  _selectedBlockIndex = index;
+                });
+                
+                if (_isEditing) {
+                  // フォーカスを設定
+                  _blockFocusNodes[index].requestFocus();
+                }
+                
+                _updatePredictions(index);
+              },
+              onLongPress: _isEditing
+                  ? (block) {
+                      _showBlockOptionsMenu(context, index);
+                    }
+                  : null,
+            );
+          }
+        }),
+      ],
+    );
+  }
+
+  // ブロックエディタービルダー
+  Widget _buildBlockEditor(int index) {
+    final block = _note!.blocks[index];
+    
+    // 実際の実装では、ブロックタイプに応じた適切なエディタを表示
+    // ここでは簡略化のため、基本的なテキストエディタを表示
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          // ブロックタイプ選択
+          Row(
+            children: [
+              DropdownButton<BlockType>(
+                value: block.type,
+                onChanged: (BlockType? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      block.type = newValue;
+                    });
+                  }
+                },
+                items: BlockType.values.map((BlockType type) {
+                  return DropdownMenuItem<BlockType>(
+                    value: type,
+                    child: Text(_getBlockTypeName(type)),
+                  );
+                }).toList(),
+              ),
+              const Spacer(),
+              // ブロック操作ボタン
+              IconButton(
+                icon: const Icon(Icons.arrow_upward, size: 20),
+                onPressed: index > 0
+                    ? () {
+                        // ブロックを上に移動
+                        setState(() {
+                          _note!.reorderBlocks(index, index - 1);
+                          
+                          // コントローラとフォーカスノードも移動
+                          final tempController = _blockControllers.removeAt(index);
+                          _blockControllers.insert(index - 1, tempController);
+                          
+                          final tempFocusNode = _blockFocusNodes.removeAt(index);
+                          _blockFocusNodes.insert(index - 1, tempFocusNode);
+                          
+                          _selectedBlockIndex = index - 1;
+                        });
+                      }
+                    : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_downward, size: 20),
+                onPressed: index < _note!.blocks.length - 1
+                    ? () {
+                        // ブロックを下に移動
+                        setState(() {
+                          _note!.reorderBlocks(index, index + 1);
+                          
+                          // コントローラとフォーカスノードも移動
+                          final tempController = _blockControllers.removeAt(index);
+                          _blockControllers.insert(index + 1, tempController);
+                          
+                          final tempFocusNode = _blockFocusNodes.removeAt(index);
+                          _blockFocusNodes.insert(index + 1, tempFocusNode);
+                          
+                          _selectedBlockIndex = index + 1;
+                        });
+                      }
+                    : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete, size: 20),
+                onPressed: () => _deleteBlock(index),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // ブロックコンテンツエディタ
+          TextField(
+            controller: _blockControllers[index],
+            focusNode: _blockFocusNodes[index],
+            maxLines: null,
+            decoration: InputDecoration(
+              hintText: _getBlockHint(block.type),
+              border: InputBorder.none,
+            ),
+            onChanged: (value) {
+              // リアルタイムで内容を更新
+              setState(() {
+                block.content = value;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ブロックオプションメニュー
+  void _showBlockOptionsMenu(BuildContext context, int index) {
+    final block = _note!.blocks[index];
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.content_copy),
+            title: const Text('ブロックを複製'),
+            onTap: () {
+              Navigator.pop(context);
+              
+              setState(() {
+                // ブロックを複製
+                final newBlock = NoteBlock(
+                  type: block.type,
+                  content: block.content,
+                  metadata: Map.from(block.metadata),
+                );
+                
+                _note!.blocks.insert(index + 1, newBlock);
+                
+                // コントローラとフォーカスノードを追加
+                final controller = TextEditingController(text: block.content);
+                _blockControllers.insert(index + 1, controller);
+                
+                final focusNode = FocusNode();
+                _blockFocusNodes.insert(index + 1, focusNode);
+                
+                _selectedBlockIndex = index + 1;
+              });
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete),
+            title: const Text('ブロックを削除'),
+            onTap: () {
+              Navigator.pop(context);
+              _deleteBlock(index);
+            },
+          ),
+          if (_note is CognitiveNote) ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.psychology),
+              title: const Text('ブロックを概念として扱う'),
+              onTap: () {
+                Navigator.pop(context);
+                
+                // ブロックを概念としてマーク
+                if (block is CognitiveBlock) {
+                  setState(() {
+                    block.cognitiveMetadata['blockType'] = 'concept';
+                    block.initConceptMetadata();
+                  });
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.connect_without_contact),
+              title: const Text('他のブロックと関連付け'),
+              onTap: () {
+                Navigator.pop(context);
+                _showRelationDialog(index);
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ブロック関連付けダイアログ
+  void _showRelationDialog(int sourceIndex) {
+    if (_note == null || !(_note is CognitiveNote)) return;
+    
+    final cognitiveNote = _note as CognitiveNote;
+    final sourceBlock = cognitiveNote.blocks[sourceIndex];
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ブロックを関連付け'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: cognitiveNote.blocks.length,
+            itemBuilder: (context, index) {
+              if (index == sourceIndex) return const SizedBox.shrink();
+              
+              final targetBlock = cognitiveNote.blocks[index];
+              
+              return ListTile(
+                title: Text(
+                  targetBlock.content.isNotEmpty
+                      ? (targetBlock.content.length > 30
+                          ? '${targetBlock.content.substring(0, 30)}...'
+                          : targetBlock.content)
+                      : 'ブロック ${index + 1}',
+                ),
+                subtitle: Text(_getBlockTypeName(targetBlock.type)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showRelationTypeDialog(sourceBlock.id, targetBlock.id);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('キャンセル'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 関連タイプ選択ダイアログ
+  void _showRelationTypeDialog(String sourceBlockId, String targetBlockId) {
+    if (_note == null || !(_note is CognitiveNote)) return;
+    
+    final cognitiveNote = _note as CognitiveNote;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('関連タイプを選択'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: BlockRelationType.values.map((type) => ListTile(
+            title: Text(_getRelationTypeName(type)),
+            onTap: () {
+              Navigator.pop(context);
+              
+              setState(() {
+                cognitiveNote.addRelation(
+                  sourceBlockId,
+                  targetBlockId,
+                  type,
+                );
+              });
+              
+              _saveNote();
+            },
+          )).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('キャンセル'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 思考マップパネル
+  Widget _buildThoughtMapPanel() {
+    if (_note == null || !(_note is CognitiveNote)) {
+      return const Center(
+        child: Text('思考マップは通常のノートでは利用できません'),
+      );
+    }
+    
+    final cognitiveNote = _note as CognitiveNote;
+    final conceptMap = cognitiveNote.generateConceptMap();
+    
+    return Column(
+      children: [
+        AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('思考マップ'),

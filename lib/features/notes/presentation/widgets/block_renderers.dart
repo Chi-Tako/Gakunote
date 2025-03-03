@@ -300,7 +300,7 @@ Widget renderBlockContent(BuildContext context, NoteBlock block) {
       decoration: BoxDecoration(
         color: Colors.red[50],
         border: Border.all(color: Colors.red[300]!),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(4.0),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
